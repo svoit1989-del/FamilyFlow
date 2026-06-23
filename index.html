@@ -400,6 +400,23 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
 }
 .essen-tag-gericht.leer { color: var(--cream-dim); font-style: italic; font-weight: 400; }
 
+.essen-mahlzeit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  flex-wrap: wrap;
+}
+.essen-mahlzeit-row + .essen-mahlzeit-row {
+  border-top: 1px solid var(--cream-dim);
+}
+.essen-mahlzeit-icon { font-size: 1rem; flex-shrink: 0; }
+.essen-mahlzeit-titel {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--forest);
+}
+
 /* ===== EINKAUF VIEW ===== */
 .einkauf-add-card {
   display: flex;
@@ -577,6 +594,21 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   transition: background 0.15s, color 0.15s;
 }
 .reset-btn:active { background: #e8c0c0; color: #b84040; }
+
+.debug-output {
+  margin-top: 12px;
+  background: var(--forest);
+  color: #cfe8d4;
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 340px;
+  overflow-y: auto;
+}
 
 .kapazitaet-form { display: flex; flex-direction: column; gap: 14px; }
 .kapaz-row {
@@ -923,6 +955,10 @@ body.widget-mode .puffer-breakdown { display: none; }
         <div class="card-label">Wartung</div>
         <p class="reset-hint">Entfernt die Beispiel-Termine und -Aufgaben aus der ersten Einrichtung. Echte Google-/Trello-Daten, deine Orte und Kapazitätseinstellungen bleiben erhalten.</p>
         <button class="reset-btn" id="resetTestdataBtn">Testdaten entfernen</button>
+
+        <p class="reset-hint" style="margin-top:16px;">Zeigt die rohen Listen-, Karten- und Label-Namen deines Trello-Boards an – hilfreich um das Mapping zu prüfen.</p>
+        <button class="reset-btn" id="trelloDebugBtn">Trello-Struktur prüfen</button>
+        <pre id="trelloDebugOutput" class="debug-output" style="display:none;"></pre>
       </div>
     </section>
 
@@ -997,13 +1033,13 @@ const DEFAULTS = {
   ],
 
   essenWoche: {
-    Montag:     { gericht: 'Spaghetti Bolognese', snack: '🥗 Salat',          suess: '🍮 Pudding' },
-    Dienstag:   { gericht: 'Hühnersuppe',         snack: '🍞 Brot',           suess: '' },
-    Mittwoch:   { gericht: 'Pfannkuchen',         snack: '',                  suess: '🍓 Erdbeeren' },
-    Donnerstag: { gericht: 'Lachs mit Reis',      snack: '🥦 Brokkoli',       suess: '' },
-    Freitag:    { gericht: 'Pizza',               snack: '🥗 Ruccola-Salat',  suess: '🍦 Eis' },
-    Samstag:    { gericht: 'Grillen',             snack: '',                  suess: '' },
-    Sonntag:    { gericht: '',                    snack: '',                  suess: '' },
+    Montag:     { Frühstück: null, Mittag: { title: 'Spaghetti Bolognese', tags: [] }, Abend: { title: 'Salat', tags: [] }, sonstige: [] },
+    Dienstag:   { Frühstück: null, Mittag: { title: 'Hühnersuppe', tags: [] },          Abend: { title: 'Brot', tags: [] },  sonstige: [] },
+    Mittwoch:   { Frühstück: { title: 'Pfannkuchen', tags: [] }, Mittag: null,           Abend: null,                        sonstige: [] },
+    Donnerstag: { Frühstück: null, Mittag: { title: 'Lachs mit Reis', tags: [] },       Abend: { title: 'Brokkoli', tags: [] }, sonstige: [] },
+    Freitag:    { Frühstück: null, Mittag: { title: 'Pizza', tags: [] },                 Abend: { title: 'Eis', tags: [] },   sonstige: [] },
+    Samstag:    { Frühstück: null, Mittag: null, Abend: { title: 'Grillen', tags: [] },  sonstige: [] },
+    Sonntag:    { Frühstück: null, Mittag: null, Abend: null,                            sonstige: [] },
   },
 
   orte: [
@@ -1192,10 +1228,25 @@ function renderTermine() {
 function renderEssenHeute() {
   const dn = dayName();
   const meal = state.essenWoche[dn] || {};
-  document.getElementById('essenGericht').textContent = meal.gericht || 'Noch kein Gericht geplant';
+  const hauptmahlzeit = meal.Mittag || meal.Abend || meal.Frühstück || null;
+
+  document.getElementById('essenGericht').textContent = hauptmahlzeit
+    ? hauptmahlzeit.title
+    : 'Noch kein Gericht geplant';
+
   const extras = document.getElementById('essenExtras');
-  const tags = [meal.snack, meal.suess].filter(Boolean);
-  extras.innerHTML = tags.map(t => `<span class="essen-tag">${t}</span>`).join('');
+  const badges = [];
+
+  // Andere Mahlzeiten des Tages kurz andeuten
+  if (meal.Frühstück && hauptmahlzeit !== meal.Frühstück) badges.push('🥐 ' + meal.Frühstück.title);
+  if (meal.Abend && hauptmahlzeit !== meal.Abend) badges.push('🌙 ' + meal.Abend.title);
+
+  // Ernährungs-Tags der Hauptmahlzeit (z.B. Low Carb)
+  if (hauptmahlzeit?.tags?.length) {
+    hauptmahlzeit.tags.forEach(t => badges.push(t));
+  }
+
+  extras.innerHTML = badges.map(t => `<span class="essen-tag">${t}</span>`).join('');
 }
 
 function renderAufgaben() {
@@ -1269,17 +1320,36 @@ function renderKalender() {
 }
 
 // ── ESSEN VIEW ────────────────────────────────────────────────
+const MEAL_TIME_ORDER = [
+  { key: 'Frühstück', icon: '🥐' },
+  { key: 'Mittag',    icon: '🍽️' },
+  { key: 'Abend',     icon: '🌙' },
+];
+
 function renderEssenView() {
   const days = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
   const dn = dayName();
   document.getElementById('essenWoche').innerHTML = days.map(d => {
     const m = state.essenWoche[d] || {};
     const isToday = d === dn;
+    const hatEintrag = MEAL_TIME_ORDER.some(mt => m[mt.key]);
+
+    const zeilen = MEAL_TIME_ORDER.map(mt => {
+      const entry = m[mt.key];
+      if (!entry) return '';
+      const tagBadges = (entry.tags || []).map(t => `<span class="essen-tag" style="margin-left:6px;">${t}</span>`).join('');
+      return `
+        <div class="essen-mahlzeit-row">
+          <span class="essen-mahlzeit-icon">${mt.icon}</span>
+          <span class="essen-mahlzeit-titel">${entry.title}</span>
+          ${tagBadges}
+        </div>`;
+    }).join('');
+
     return `
       <div class="essen-tag-card" style="${isToday ? 'border-left:3px solid var(--green);' : ''}">
         <div class="essen-tag-name">${d}${isToday ? ' · Heute' : ''}</div>
-        <div class="essen-tag-gericht ${m.gericht ? '' : 'leer'}">${m.gericht || 'Noch nicht geplant'}</div>
-        ${[m.snack, m.suess].filter(Boolean).map(t => `<span class="essen-tag" style="margin-top:6px;display:inline-block;">${t}</span>`).join(' ')}
+        ${hatEintrag ? zeilen : '<div class="essen-tag-gericht leer">Noch nicht geplant</div>'}
       </div>`;
   }).join('');
 }
@@ -1376,6 +1446,47 @@ function renderFamilie() {
   renderKapazitaet();
 
   document.getElementById('resetTestdataBtn').onclick = resetTestdata;
+  document.getElementById('trelloDebugBtn').onclick = debugTrelloStructure;
+}
+
+// Diagnose: zeigt rohe Trello-Board-Struktur (Listen, Karten, Labels) an,
+// um das Hauptgericht/Snack/Süßspeise-Mapping gegen die echten Bezeichnungen
+// im Board zu prüfen, ohne dass die Zugangsdaten irgendwo außerhalb des
+// eigenen Browsers landen.
+async function debugTrelloStructure() {
+  const out = document.getElementById('trelloDebugOutput');
+  out.style.display = 'block';
+  out.textContent = 'Lade Board-Struktur…';
+
+  const creds = getTrelloCreds();
+  if (!creds || !creds.boardId) {
+    out.textContent = 'Keine Trello-Verbindung eingerichtet.';
+    return;
+  }
+
+  try {
+    const lists = await trelloFetch(`/boards/${creds.boardId}/lists?cards=open&card_fields=name,labels,desc`);
+    let report = '';
+    lists.forEach(list => {
+      report += `LISTE: "${list.name}"\n`;
+      if (!list.cards.length) {
+        report += '  (keine offenen Karten)\n';
+      }
+      list.cards.forEach(card => {
+        const labelNames = (card.labels || []).map(l => `"${l.name}"`).join(', ') || '–';
+        report += `  KARTE: "${card.name}"\n`;
+        report += `    Labels: ${labelNames}\n`;
+        if (card.desc) {
+          const lines = card.desc.split('\n').filter(Boolean).length;
+          report += `    Beschreibung: ${lines} Zeile(n)\n`;
+        }
+      });
+      report += '\n';
+    });
+    out.textContent = report || 'Keine Listen gefunden.';
+  } catch (err) {
+    out.textContent = 'Fehler beim Laden: ' + err.message;
+  }
 }
 
 // Entfernt nur die ursprünglichen Beispieldaten (feste IDs aus der Erstinstallation).
@@ -1721,12 +1832,34 @@ async function findTrelloBoardByUrl(boardIdOrShortLink) {
   return trelloFetch(`/boards/${boardIdOrShortLink}?fields=id,name`);
 }
 
+// Labels, die den Zeitpunkt der Mahlzeit festlegen. Alles andere Label
+// (z.B. "Low Carb", "High Carb") wird als Ernährungs-Tag behandelt und
+// nur informativ angezeigt.
+const MEAL_TIME_LABELS = ['Frühstück', 'Mittag', 'Abend'];
+
+function isUrlLine(line) {
+  const t = line.trim();
+  if (!t) return false;
+  // reine URL-Zeile
+  if (/^https?:\/\/\S+$/i.test(t)) return true;
+  // Markdown-Link [Text](url) als alleinige Zeile
+  if (/^\[.*\]\(https?:\/\/\S+\)$/i.test(t)) return true;
+  return false;
+}
+
+function parseCardLabels(card) {
+  const names = (card.labels || []).map(l => l.name).filter(Boolean);
+  const mealTime = names.find(n => MEAL_TIME_LABELS.includes(n)) || null;
+  const tags = names.filter(n => !MEAL_TIME_LABELS.includes(n));
+  return { mealTime, tags };
+}
+
 async function syncTrello() {
   const creds = getTrelloCreds();
   if (!creds || !creds.boardId) return;
 
   try {
-    const lists = await trelloFetch(`/boards/${creds.boardId}/lists?cards=open&card_fields=name,labels,desc`);
+    const lists = await trelloFetch(`/boards/${creds.boardId}/lists?cards=open&card_fields=name,desc,labels`);
 
     const essenWoche = { ...state.essenWoche };
     const einkaufNeu = [];
@@ -1735,24 +1868,35 @@ async function syncTrello() {
       if (!TRELLO_DAY_LISTS.includes(list.name)) return;
 
       const cards = list.cards || [];
-      const hauptgericht = findCardByLabel(cards, 'Hauptgericht') || cards[0];
-      const snack        = findCardByLabel(cards, 'Snack') || findCardByLabel(cards, 'Beilage');
-      const suess         = findCardByLabel(cards, 'Süßspeise') || findCardByLabel(cards, 'Suessspeise');
+      const tagPlan = { Frühstück: null, Mittag: null, Abend: null, sonstige: [] };
 
-      essenWoche[list.name] = {
-        gericht: hauptgericht ? hauptgericht.name : '',
-        snack: snack ? '🥗 ' + snack.name : '',
-        suess: suess ? '🍮 ' + suess.name : '',
-      };
-
-      // Zutaten aus Kartenbeschreibung als Einkaufsliste-Vorschläge
       cards.forEach(card => {
-        if (!card.desc) return;
-        card.desc.split('\n').forEach(line => {
-          const clean = line.replace(/^[-*•]\s*/, '').trim();
-          if (clean) einkaufNeu.push({ title: clean, source: 'rezept' });
-        });
+        const { mealTime, tags } = parseCardLabels(card);
+        const entry = { title: card.name, tags };
+
+        if (mealTime && tagPlan[mealTime] === null) {
+          tagPlan[mealTime] = entry;
+        } else if (mealTime) {
+          // Falls versehentlich zwei Karten dasselbe Mahlzeit-Label tragen:
+          // erste gewinnt, weitere landen unter "sonstige" statt verloren zu gehen.
+          tagPlan.sonstige.push(entry);
+        } else {
+          tagPlan.sonstige.push(entry);
+        }
+
+        // Zutaten aus JEDER Karte des Tages sammeln (Konvention: eine
+        // Zutat pro Zeile, optional mit "-"/"*" davor; URL-Zeilen werden
+        // ignoriert, damit Rezept-Links nicht in der Einkaufsliste landen).
+        if (card.desc) {
+          card.desc.split('\n').forEach(line => {
+            if (isUrlLine(line)) return;
+            const clean = line.replace(/^[-*•]\s*/, '').trim();
+            if (clean) einkaufNeu.push({ title: clean, source: 'rezept' });
+          });
+        }
       });
+
+      essenWoche[list.name] = tagPlan;
     });
 
     save('essenWoche', essenWoche);
@@ -1773,12 +1917,6 @@ async function syncTrello() {
     console.error('Trello Sync Fehler:', err);
     showToast('Trello-Sync fehlgeschlagen. Board-ID prüfen.');
   }
-}
-
-function findCardByLabel(cards, labelName) {
-  return cards.find(c => (c.labels || []).some(l =>
-    (l.name || '').toLowerCase().includes(labelName.toLowerCase())
-  ));
 }
 
 function dedupeEinkauf(items) {
