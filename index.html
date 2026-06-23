@@ -560,6 +560,24 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   padding: 6px 0;
 }
 
+.reset-hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+  margin-bottom: 14px;
+}
+.reset-btn {
+  width: 100%;
+  padding: 13px;
+  background: var(--cream-dim);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink);
+  transition: background 0.15s, color 0.15s;
+}
+.reset-btn:active { background: #e8c0c0; color: #b84040; }
+
 .kapazitaet-form { display: flex; flex-direction: column; gap: 14px; }
 .kapaz-row {
   display: flex;
@@ -899,6 +917,12 @@ body.widget-mode .puffer-breakdown { display: none; }
       <div class="card">
         <div class="card-label">Kapazitätseinstellungen</div>
         <div class="kapazitaet-form" id="kapazitaetForm"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Wartung</div>
+        <p class="reset-hint">Entfernt die Beispiel-Termine und -Aufgaben aus der ersten Einrichtung. Echte Google-/Trello-Daten, deine Orte und Kapazitätseinstellungen bleiben erhalten.</p>
+        <button class="reset-btn" id="resetTestdataBtn">Testdaten entfernen</button>
       </div>
     </section>
 
@@ -1350,6 +1374,26 @@ function renderFamilie() {
   };
 
   renderKapazitaet();
+
+  document.getElementById('resetTestdataBtn').onclick = resetTestdata;
+}
+
+// Entfernt nur die ursprünglichen Beispieldaten (feste IDs aus der Erstinstallation).
+// Echte Google-/Trello-Einträge (source 'google'/'rezept') und alles, was der Nutzer
+// selbst manuell mit neuer ID hinzugefügt hat, bleibt unberührt.
+const SEED_TERMIN_IDS  = ['t1', 't2', 't3'];
+const SEED_AUFGABE_IDS = ['a1', 'a2', 'a3'];
+
+function resetTestdata() {
+  const confirmed = confirm('Beispiel-Termine und -Aufgaben aus der Ersteinrichtung entfernen? Das betrifft nur die Testdaten, keine echten Google-/Trello-Daten.');
+  if (!confirmed) return;
+
+  save('termine', state.termine.filter(t => !SEED_TERMIN_IDS.includes(t.id)));
+  save('aufgaben', state.aufgaben.filter(a => !SEED_AUFGABE_IDS.includes(a.id)));
+
+  showToast('Testdaten entfernt ✓');
+  renderFamilie();
+  if (state.activeView === 'home') renderHome();
 }
 
 function renderConnections() {
