@@ -1525,7 +1525,7 @@ function resetTestdata() {
 
   showToast('Testdaten entfernt ✓');
   renderFamilie();
-  if (state.activeView === 'home') renderHome();
+  refreshAllViews();
 }
 
 function renderConnections() {
@@ -1595,7 +1595,7 @@ function setupTrelloModal() {
     showToast('Verbinde mit Trello…');
     await syncTrello();
     renderFamilie();
-    if (state.activeView === 'home') renderHome();
+    refreshAllViews();
   });
 }
 
@@ -1644,6 +1644,19 @@ function switchView(view) {
   window.scrollTo(0, 0);
 }
 
+// Rendert die aktuell sichtbare Ansicht neu. Wird nach jedem Sync (Google,
+// Trello) aufgerufen, damit z.B. neue Trello-Daten sofort sichtbar sind,
+// auch wenn man sich gerade NICHT im Home-Tab befindet.
+function refreshAllViews() {
+  switch (state.activeView) {
+    case 'home':     renderHome(); break;
+    case 'kalender': renderKalender(); break;
+    case 'essen':    renderEssenView(); break;
+    case 'einkauf':  renderEinkauf(); break;
+    case 'familie':  renderFamilie(); break;
+  }
+}
+
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
@@ -1672,13 +1685,13 @@ function init() {
 
   // Bei bestehender Trello-Verbindung im Hintergrund aktualisieren
   if (getTrelloCreds()?.boardId) {
-    syncTrello().then(() => { if (state.activeView === 'home') renderHome(); });
+    syncTrello().then(() => { refreshAllViews(); });
   }
 
   // Bei bestehender Google-Verbindung im Hintergrund aktualisieren
   if (isGoogleConnected()) {
     Promise.all([syncGoogleCalendar(), syncGoogleTasks()])
-      .then(() => { if (state.activeView === 'home') renderHome(); });
+      .then(() => { refreshAllViews(); });
   }
 }
 
@@ -1764,7 +1777,7 @@ async function onGoogleConnected() {
   showToast('Google verbunden ✓');
   renderFamilie();
   await Promise.all([syncGoogleCalendar(), syncGoogleTasks()]);
-  if (state.activeView === 'home') renderHome();
+  refreshAllViews();
 }
 
 // ── GOOGLE CALENDAR ───────────────────────────────────────────
