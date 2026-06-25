@@ -1142,6 +1142,27 @@ const KAT_MAP = {
 };
 function resolveKat(kat) { return KAT_MAP[kat] || '🎁 Sonstiges'; }
 
+// Stichwort-basierte Kategorie-Zuordnung für automatisch aus Trello/Google
+// importierte Artikel. Bewusst einfach gehalten -- bei Unsicherheit landet
+// der Artikel in "Sonstiges" und kann manuell verschoben werden.
+const KAT_KEYWORDS = {
+  'Obst & Gemüse':   ['apfel','äpfel','banane','tomate','gurke','salat','paprika','zwiebel','knoblauch','karotte','kartoffel','zitrone','spinat','brokkoli','zucchini','pilz','obst','gemüse','kräuter','petersilie','schnittlauch','frühlingszwiebel'],
+  'Fleisch & Wurst': ['hackfleisch','hähnchen','huhn','pute','rind','schwein','speck','wurst','schinken','fisch','lachs','filet','steak','schnitzel','leberkäse','fleisch'],
+  'Milchprodukte':   ['milch','käse','quark','joghurt','sahne','butter','schmand','mozzarella','frischkäse','feta','schafskäse','ei','eier'],
+  'Backwaren':       ['brot','brötchen','baguette','toast','mehl','teig','waffel'],
+  'Vorrat':          ['nudeln','spaghetti','reis','gnocchi','linsen','dose','konserve','öl','essig','zucker','salz','gewürz','sauce','soße','honig','senf'],
+  'Drogerie':        ['reiniger','shampoo','seife','zahnpasta','creme','windel'],
+  'Haushalt':        ['schwamm','spülmittel','müllbeutel','küchenrolle','batterie'],
+};
+
+function guessKategorie(title) {
+  const t = title.toLowerCase();
+  for (const [kat, words] of Object.entries(KAT_KEYWORDS)) {
+    if (words.some(w => t.includes(w))) return kat;
+  }
+  return 'Sonstiges';
+}
+
 // ── RENDER FUNCTIONS ──────────────────────────────────────────
 
 function renderHeader() {
@@ -1835,22 +1856,44 @@ async function findTrelloBoardByUrl(boardIdOrShortLink) {
 // Labels, die den Zeitpunkt der Mahlzeit festlegen. Alles andere Label
 // (z.B. "Low Carb", "High Carb") wird als Ernährungs-Tag behandelt und
 // nur informativ angezeigt.
-const MEAL_TIME_LABELS = ['Frühstück', 'Mittag', 'Abend'];
+// Die drei Mahlzeit-Slots, die in der App genutzt werden.
+const MEAL_TIME_SLOTS = ['Frühstück', 'Mittag', 'Abend'];
+
+// Trello-Labels sind in der Praxis nicht immer exakt "Frühstück"/"Mittag"/
+// "Abend" -- sie haben Leerzeichen am Ende ("Abendessen "), heißen länger
+// ("Mittagessen", "Abendessen") oder sind anders geschrieben. Diese Funktion
+// erkennt großzügig, zu welchem Slot ein Label gehört.
+function matchMealTimeSlot(labelName) {
+  const clean = labelName.trim().toLowerCase();
+  if (clean.startsWith('frühstück') || clean.startsWith('fruehstueck')) return 'Frühstück';
+  if (clean.startsWith('mittag')) return 'Mittag';
+  if (clean.startsWith('abend')) return 'Abend';
+  return null;
+}
 
 function isUrlLine(line) {
   const t = line.trim();
   if (!t) return false;
-  // reine URL-Zeile
-  if (/^https?:\/\/\S+$/i.test(t)) return true;
-  // Markdown-Link [Text](url) als alleinige Zeile
-  if (/^\[.*\]\(https?:\/\/\S+\)$/i.test(t)) return true;
+  // Jede Zeile, die irgendwo eine URL enthält (nicht nur wenn die Zeile
+  // NUR aus der URL besteht) -- Chefkoch & Co. hängen oft Tracking-Parameter
+  // an, sodass die Zeile technisch nicht "nur" eine URL ist.
+  if (/https?:\/\/\S+/i.test(t)) return true;
+  // Markdown-Link [Text](url)
+  if (/\[.*\]\(https?:\/\/\S+\)/i.test(t)) return true;
+  // Typische Share-Boilerplate von Rezept-Apps/-Seiten
+  if (/^(hunger\?|rezept auf|gefunden auf|quelle:|via )/i.test(t)) return true;
   return false;
 }
 
 function parseCardLabels(card) {
   const names = (card.labels || []).map(l => l.name).filter(Boolean);
-  const mealTime = names.find(n => MEAL_TIME_LABELS.includes(n)) || null;
-  const tags = names.filter(n => !MEAL_TIME_LABELS.includes(n));
+  let mealTime = null;
+  const tags = [];
+  names.forEach(n => {
+    const slot = matchMealTimeSlot(n);
+    if (slot && !mealTime) mealTime = slot; // erstes erkanntes Mahlzeit-Label gewinnt
+    else if (!slot) tags.push(n.trim());     // alles andere ist ein Ernährungs-/Kategorie-Tag
+  });
   return { mealTime, tags };
 }
 
@@ -1874,13 +1917,16 @@ async function syncTrello() {
         const { mealTime, tags } = parseCardLabels(card);
         const entry = { title: card.name, tags };
 
-        if (mealTime && tagPlan[mealTime] === null) {
-          tagPlan[mealTime] = entry;
-        } else if (mealTime) {
-          // Falls versehentlich zwei Karten dasselbe Mahlzeit-Label tragen:
-          // erste gewinnt, weitere landen unter "sonstige" statt verloren zu gehen.
-          tagPlan.sonstige.push(entry);
+        // Kein Mahlzeit-Label erkannt? Dann ist die Karte erfahrungsgemäß
+        // das Hauptgericht des Tages -- als "Abend" einsortieren, sofern
+        // der Slot noch frei ist, statt die Karte unsichtbar zu machen.
+        const slot = mealTime || (tagPlan.Abend === null ? 'Abend' : null);
+
+        if (slot && tagPlan[slot] === null) {
+          tagPlan[slot] = entry;
         } else {
+          // Slot schon belegt (z.B. zwei Karten ohne Label, oder doppeltes
+          // Mahlzeit-Label) -- nichts verschwindet, landet unter "sonstige".
           tagPlan.sonstige.push(entry);
         }
 
@@ -1906,7 +1952,7 @@ async function syncTrello() {
     const neueItems = einkaufNeu.map(i => ({
       id: 'tr_' + uid(),
       title: i.title,
-      kategorie: 'Sonstiges',
+      kategorie: guessKategorie(i.title),
       checked: false,
       source: 'rezept',
     }));
