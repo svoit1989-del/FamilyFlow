@@ -959,6 +959,10 @@ body.widget-mode .puffer-breakdown { display: none; }
         <p class="reset-hint" style="margin-top:16px;">Zeigt die rohen Listen-, Karten- und Label-Namen deines Trello-Boards an – hilfreich um das Mapping zu prüfen.</p>
         <button class="reset-btn" id="trelloDebugBtn">Trello-Struktur prüfen</button>
         <pre id="trelloDebugOutput" class="debug-output" style="display:none;"></pre>
+
+        <p class="reset-hint" style="margin-top:16px;">Zeigt, was die App aktuell tatsächlich gespeichert hat (nach dem letzten Sync).</p>
+        <button class="reset-btn" id="stateDebugBtn">Gespeicherten Essensplan anzeigen</button>
+        <pre id="stateDebugOutput" class="debug-output" style="display:none;"></pre>
       </div>
     </section>
 
@@ -1468,6 +1472,27 @@ function renderFamilie() {
 
   document.getElementById('resetTestdataBtn').onclick = resetTestdata;
   document.getElementById('trelloDebugBtn').onclick = debugTrelloStructure;
+  document.getElementById('stateDebugBtn').onclick = debugStoredEssenWoche;
+}
+
+// Diagnose: zeigt, was im LocalStorage unter "ff_essenWoche" tatsächlich
+// gespeichert ist -- trennt eindeutig "Sync/Speichern kaputt" von
+// "Anzeige kaputt", da hier die rohen Rohdaten zu sehen sind, unabhängig
+// von jeder Render-Funktion.
+function debugStoredEssenWoche() {
+  const out = document.getElementById('stateDebugOutput');
+  out.style.display = 'block';
+  const raw = localStorage.getItem('ff_essenWoche');
+  if (!raw) {
+    out.textContent = 'Kein Eintrag "ff_essenWoche" im LocalStorage gefunden.';
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    out.textContent = JSON.stringify(parsed, null, 2);
+  } catch (err) {
+    out.textContent = 'Fehler beim Parsen: ' + err.message + '\n\nRohdaten:\n' + raw;
+  }
 }
 
 // Diagnose: zeigt rohe Trello-Board-Struktur (Listen, Karten, Labels) an,
