@@ -386,12 +386,88 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   box-shadow: var(--shadow);
 }
 .essen-tag-name {
-  font-size: 0.7rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-size: 0.78rem;
+  font-weight: 700;
   color: var(--muted);
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+}
+.kw-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 4px;
+}
+.kw-badge {
+  display: inline-block;
+  background: var(--forest);
+  color: var(--cream);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 5px 14px;
+  border-radius: 99px;
+}
+.vorschlag-btn {
+  background: var(--green);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 99px;
+  transition: background 0.15s, opacity 0.15s;
+}
+.vorschlag-btn:disabled { opacity: 0.4; cursor: default; }
+.vorschlag-btn:not(:disabled):active { background: var(--forest); }
+
+.gegessen-btn {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--cream);
+  border-radius: 99px;
+  padding: 3px 9px;
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.gegessen-btn:active { background: var(--green); color: #fff; }
+
+.vorschlag-liste { display: flex; flex-direction: column; gap: 10px; }
+.vorschlag-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.vorschlag-tag {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--muted);
+  min-width: 78px;
+  padding-top: 2px;
+}
+.vorschlag-gericht {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vorschlag-last {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+.vorschlag-regel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--green);
+  background: rgba(74,124,89,0.1);
+  border-radius: 99px;
+  padding: 2px 8px;
+  flex-shrink: 0;
 }
 .essen-tag-gericht {
   font-size: 1rem;
@@ -497,6 +573,15 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
 .einkauf-item.checked .einkauf-item-title {
   text-decoration: line-through;
   color: var(--muted);
+}
+.einkauf-count {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--green);
+  background: rgba(74,124,89,0.12);
+  border-radius: 99px;
+  padding: 2px 8px;
+  flex-shrink: 0;
 }
 .einkauf-archive-btn {
   width: 100%;
@@ -892,6 +977,9 @@ body.widget-mode .puffer-breakdown { display: none; }
     <!-- VIEW: KALENDER -->
     <section class="view" id="view-kalender">
       <div class="view-header">Kalender</div>
+      <div class="kw-header-row">
+        <span id="kalenderKWHeader" class="kw-badge"></span>
+      </div>
       <div class="card">
         <div class="card-label">Diese Woche</div>
         <div id="kalenderContent" class="kalender-grid"></div>
@@ -901,7 +989,24 @@ body.widget-mode .puffer-breakdown { display: none; }
     <!-- VIEW: ESSEN -->
     <section class="view" id="view-essen">
       <div class="view-header">Wochenplan</div>
+      <div class="kw-header-row">
+        <span id="essenKWHeader" class="kw-badge"></span>
+        <button class="vorschlag-btn" id="vorschlagBtn">✨ Vorschläge erstellen</button>
+      </div>
       <div id="essenWoche"></div>
+
+    <!-- VORSCHLAG MODAL -->
+    <div class="modal-overlay" id="vorschlagModal">
+      <div class="modal-box">
+        <div class="modal-title">Vorschläge für diese Woche</div>
+        <p class="modal-hint">Basierend auf deinem Gericht-Pool, Wochenregeln und wann du was zuletzt gegessen hast.</p>
+        <div id="vorschlagListe" class="vorschlag-liste"></div>
+        <div class="modal-actions" style="margin-top:16px;">
+          <button class="modal-btn secondary" id="vorschlagAbbrechen">Abbrechen</button>
+          <button class="modal-btn primary" id="vorschlagUebernehmen">Übernehmen</button>
+        </div>
+      </div>
+    </div>
     </section>
 
     <!-- VIEW: EINKAUF -->
@@ -963,6 +1068,10 @@ body.widget-mode .puffer-breakdown { display: none; }
         <p class="reset-hint" style="margin-top:16px;">Zeigt, was die App aktuell tatsächlich gespeichert hat (nach dem letzten Sync).</p>
         <button class="reset-btn" id="stateDebugBtn">Gespeicherten Essensplan anzeigen</button>
         <pre id="stateDebugOutput" class="debug-output" style="display:none;"></pre>
+
+        <p class="reset-hint" style="margin-top:16px;">Zeigt die rohe Antwort von Google Tasks – hilfreich falls Aufgaben nicht ankommen.</p>
+        <button class="reset-btn" id="tasksDebugBtn">Google Tasks prüfen</button>
+        <pre id="tasksDebugOutput" class="debug-output" style="display:none;"></pre>
       </div>
     </section>
 
@@ -1101,6 +1210,39 @@ function dayName() {
 }
 function dateStr() {
   return new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+// ISO-8601-Kalenderwochen-Berechnung. Behandelt Jahreswechsel korrekt:
+// z.B. ist der 1. Januar 2026 (Donnerstag) in KW 1/2026, aber der
+// 28. Dezember 2026 (Montag) ist in KW 53/2026, und der 4. Januar 2027
+// (Montag) ist KW 1/2027 -- das ist exakt das, was ISO 8601 vorschreibt.
+function getISOWeekInfo(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  // Auf nächsten Donnerstag setzen (ISO: Woche gehört zum Jahr des Donnerstags)
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return { kw: week, year: d.getUTCFullYear() };
+}
+
+// Gibt den Montag der aktuellen ISO-Woche zurück.
+function getMondayOfCurrentWeek(referenceDate) {
+  const d = new Date(referenceDate || new Date());
+  const day = d.getDay(); // 0=So, 1=Mo...6=Sa
+  const diff = (day === 0 ? -6 : 1 - day); // Abstand zum Montag
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Formatiert ein Datum als "Montag, 23. Juni"
+function formatDayLabel(date) {
+  return date.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+// Formatiert ein Datum als "Mo 23.06."
+function formatDayShort(date) {
+  return date.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
 
 // ── KAPAZITÄT BERECHNUNG ──────────────────────────────────────
@@ -1315,21 +1457,30 @@ function renderHome() {
 
 // ── KALENDER VIEW ─────────────────────────────────────────────
 function renderKalender() {
+  const wrap    = document.getElementById('kalenderContent');
+  const todayStr = today();
+  const monday  = getMondayOfCurrentWeek();
+  const { kw, year } = getISOWeekInfo(monday);
+
+  // KW-Header über dem Kalender
+  const kwHeader = document.getElementById('kalenderKWHeader');
+  if (kwHeader) kwHeader.textContent = `KW ${kw} / ${year}`;
+
   const days = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
-  const wrap = document.getElementById('kalenderContent');
-  // Gruppiere Termine nach Datum-Offset
-  const todayDate = new Date();
-  const todayStr  = today();
 
   wrap.innerHTML = days.map((d, i) => {
-    const dt = new Date(todayDate);
-    dt.setDate(dt.getDate() - dt.getDay() + 1 + i); // Mo–So
-    const ds = dt.toISOString().slice(0, 10);
-    const dayTermine = state.termine.filter(t => t.date === ds);
+    const dt = new Date(monday);
+    dt.setDate(monday.getDate() + i);
+    const ds      = dt.toISOString().slice(0, 10);
+    const label   = formatDayLabel(dt);           // "Montag, 23. Juni"
     const isToday = ds === todayStr;
+    const dayTermine = state.termine.filter(t => t.date === ds);
+
     return `
       <div class="kalender-day">
-        <div class="kalender-day-name" style="${isToday ? 'color:var(--green);' : ''}">${d}${isToday ? ' · Heute' : ''}</div>
+        <div class="kalender-day-name" style="${isToday ? 'color:var(--green);font-weight:800;' : ''}">
+          ${label}${isToday ? ' · Heute' : ''}
+        </div>
         <div class="kalender-day-events">
           ${dayTermine.length
             ? dayTermine.map(t => `
@@ -1341,7 +1492,7 @@ function renderKalender() {
           }
         </div>
       </div>`;
-  }).join('<div style="height:1px;background:var(--cream-dim);margin:4px 0;"></div>');
+  }).join('<div style="height:1px;background:var(--cream-dim);margin:6px 0;"></div>');
 }
 
 // ── ESSEN VIEW ────────────────────────────────────────────────
@@ -1352,31 +1503,138 @@ const MEAL_TIME_ORDER = [
 ];
 
 function renderEssenView() {
-  const days = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
-  const dn = dayName();
-  document.getElementById('essenWoche').innerHTML = days.map(d => {
-    const m = state.essenWoche[d] || {};
+  const days   = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  const dn     = dayName();
+  const monday = getMondayOfCurrentWeek();
+  const { kw, year } = getISOWeekInfo(monday);
+
+  const kwHeader = document.getElementById('essenKWHeader');
+  if (kwHeader) kwHeader.textContent = `KW ${kw} / ${year}`;
+
+  // Vorschlag-Button: nur aktiv wenn Pool geladen
+  const vorschlagBtn = document.getElementById('vorschlagBtn');
+  if (vorschlagBtn) {
+    const poolSize = (LS.get('ff_gerichtPool', [])).length;
+    vorschlagBtn.disabled = poolSize === 0;
+    vorschlagBtn.title = poolSize === 0 ? 'Bitte zuerst Trello synchronisieren' : '';
+    vorschlagBtn.onclick = openVorschlagModal;
+  }
+
+  document.getElementById('essenWoche').innerHTML = days.map((d, i) => {
+    const dt      = new Date(monday);
+    dt.setDate(monday.getDate() + i);
+    const label   = formatDayLabel(dt);
     const isToday = d === dn;
+    const m       = state.essenWoche[d] || {};
     const hatEintrag = MEAL_TIME_ORDER.some(mt => m[mt.key]);
 
     const zeilen = MEAL_TIME_ORDER.map(mt => {
       const entry = m[mt.key];
       if (!entry) return '';
-      const tagBadges = (entry.tags || []).map(t => `<span class="essen-tag" style="margin-left:6px;">${t}</span>`).join('');
+      const tagBadges = (entry.tags || []).map(t =>
+        `<span class="essen-tag" style="margin-left:6px;">${t}</span>`).join('');
+      // "Als gegessen markieren"-Button nur für Abend-Einträge mit Pool-Bezug
+      const gegessenBtn = (mt.key === 'Abend' && entry.poolId)
+        ? `<button class="gegessen-btn" data-pid="${entry.poolId}" title="Als gegessen markieren">✓</button>`
+        : '';
       return `
         <div class="essen-mahlzeit-row">
           <span class="essen-mahlzeit-icon">${mt.icon}</span>
           <span class="essen-mahlzeit-titel">${entry.title}</span>
           ${tagBadges}
+          ${gegessenBtn}
         </div>`;
     }).join('');
 
     return `
       <div class="essen-tag-card" style="${isToday ? 'border-left:3px solid var(--green);' : ''}">
-        <div class="essen-tag-name">${d}${isToday ? ' · Heute' : ''}</div>
+        <div class="essen-tag-name" style="${isToday ? 'color:var(--green);font-weight:800;' : ''}">
+          ${label}${isToday ? ' · Heute' : ''}
+        </div>
         ${hatEintrag ? zeilen : '<div class="essen-tag-gericht leer">Noch nicht geplant</div>'}
       </div>`;
   }).join('');
+
+  // "Als gegessen"-Buttons verdrahten
+  document.querySelectorAll('.gegessen-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      markAsEaten(btn.dataset.pid);
+      btn.textContent = '✓✓';
+      btn.style.color = 'var(--green)';
+      btn.disabled = true;
+      showToast('Als gegessen markiert ✓');
+    });
+  });
+
+  // Modal schließen
+  document.getElementById('vorschlagAbbrechen').onclick = () =>
+    document.getElementById('vorschlagModal').classList.remove('open');
+  document.getElementById('vorschlagUebernehmen').onclick = uebernehmeVorschlag;
+}
+
+// Aktueller Vorschlag zwischenspeichern, damit "Übernehmen" ihn kennt
+let _aktuellerVorschlag = null;
+
+function openVorschlagModal() {
+  const vorschlag = buildWochenvorschlag();
+  _aktuellerVorschlag = vorschlag;
+
+  const days = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  const pool = LS.get('ff_gerichtPool', []);
+  const regeln = getWochenregeln();
+
+  document.getElementById('vorschlagListe').innerHTML = days.map(d => {
+    const g = vorschlag[d];
+    const regel = regeln[d];
+    const regelHint = regel?.fixLabel
+      ? `<span class="vorschlag-regel">📌 Feste Regel</span>`
+      : regel?.preferTag
+        ? `<span class="vorschlag-regel">🎯 ${regel.preferTag}</span>`
+        : '';
+
+    // lastEaten aus Pool
+    const poolEntry = g?.poolId ? pool.find(p => p.id === g.poolId) : null;
+    const lastHint  = poolEntry?.lastEaten
+      ? `<span class="vorschlag-last">zuletzt ${new Date(poolEntry.lastEaten).toLocaleDateString('de-DE', {day:'numeric', month:'short'})}</span>`
+      : poolEntry ? `<span class="vorschlag-last">noch nie</span>` : '';
+
+    return `
+      <div class="vorschlag-row">
+        <div class="vorschlag-tag">${d}</div>
+        <div class="vorschlag-gericht">
+          <span>${g ? g.title : '–'}</span>
+          ${lastHint}
+        </div>
+        ${regelHint}
+      </div>`;
+  }).join('');
+
+  document.getElementById('vorschlagModal').classList.add('open');
+}
+
+function uebernehmeVorschlag() {
+  if (!_aktuellerVorschlag) return;
+  const essenWoche = { ...state.essenWoche };
+
+  Object.entries(_aktuellerVorschlag).forEach(([day, gericht]) => {
+    if (!gericht) return;
+    if (!essenWoche[day]) essenWoche[day] = { Frühstück: null, Mittag: null, Abend: null, sonstige: [] };
+    // Vorschlag nur eintragen wenn Abend-Slot noch frei (Trello-Daten haben Vorrang)
+    if (!essenWoche[day].Abend) {
+      essenWoche[day].Abend = {
+        title: gericht.title,
+        tags:  gericht.tags,
+        poolId: gericht.poolId,
+        source: 'vorschlag',
+      };
+    }
+  });
+
+  save('essenWoche', essenWoche);
+  document.getElementById('vorschlagModal').classList.remove('open');
+  renderEssenView();
+  showToast('Vorschläge übernommen ✓');
+  _aktuellerVorschlag = null;
 }
 
 // ── EINKAUF VIEW ──────────────────────────────────────────────
@@ -1403,6 +1661,7 @@ function renderEinkauf() {
                   ${item.checked ? '✓' : ''}
                 </div>
                 <span class="einkauf-item-title">${item.title}</span>
+                ${item.count > 1 ? `<span class="einkauf-count">×${item.count}</span>` : ''}
               </div>`).join('')}
           </div>
         </div>`;
@@ -1473,6 +1732,44 @@ function renderFamilie() {
   document.getElementById('resetTestdataBtn').onclick = resetTestdata;
   document.getElementById('trelloDebugBtn').onclick = debugTrelloStructure;
   document.getElementById('stateDebugBtn').onclick = debugStoredEssenWoche;
+  document.getElementById('tasksDebugBtn').onclick = debugGoogleTasks;
+}
+
+// Diagnose: zeigt die rohe Google-Tasks-API-Antwort -- sowohl die Liste
+// aller Tasklisten (um zu prüfen, ob "@default" wirklich die Standardliste
+// trifft) als auch die rohen Tasks selbst, inkl. evtl. Fehlermeldungen.
+async function debugGoogleTasks() {
+  const out = document.getElementById('tasksDebugOutput');
+  out.style.display = 'block';
+  out.textContent = 'Lade…';
+
+  if (!isGoogleConnected()) {
+    out.textContent = 'Google ist nicht verbunden.';
+    return;
+  }
+
+  try {
+    const listsRes = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
+      headers: { Authorization: `Bearer ${googleAccessToken.token}` },
+    });
+    const listsData = await listsRes.json();
+
+    let report = `TASKLISTEN (Status ${listsRes.status}):\n`;
+    report += JSON.stringify(listsData.items || listsData, null, 2);
+    report += '\n\n';
+
+    const tasksRes = await fetch('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=false&showHidden=true', {
+      headers: { Authorization: `Bearer ${googleAccessToken.token}` },
+    });
+    const tasksData = await tasksRes.json();
+
+    report += `TASKS aus @default (Status ${tasksRes.status}):\n`;
+    report += JSON.stringify(tasksData.items || tasksData, null, 2);
+
+    out.textContent = report;
+  } catch (err) {
+    out.textContent = 'Fehler: ' + err.message;
+  }
 }
 
 // Diagnose: zeigt, was im LocalStorage unter "ff_essenWoche" tatsächlich
@@ -1942,35 +2239,49 @@ async function syncTrello() {
   try {
     const lists = await trelloFetch(`/boards/${creds.boardId}/lists?cards=open&card_fields=name,desc,labels`);
 
-    const essenWoche = { ...state.essenWoche };
-    const einkaufNeu = [];
+    const essenWoche  = { ...state.essenWoche };
+    const einkaufNeu  = [];
+
+    // Bestehenden Pool laden – lastEaten-Daten behalten, nur neue Gerichte
+    // ergänzen, gelöschte aus Trello entfernen.
+    const existingPool = LS.get('ff_gerichtPool', []);
+    const poolMap = {};
+    existingPool.forEach(g => { poolMap[g.title] = g; });
+    const newPool = [];
 
     lists.forEach(list => {
+      // ── Pool: Hauptgerichte aus der Ideenliste ────────────────
+      if (list.name === 'Hauptgerichte') {
+        list.cards.forEach(card => {
+          const { tags } = parseCardLabels(card);
+          const existing = poolMap[card.name];
+          newPool.push({
+            id:        existing?.id || 'gp_' + uid(),
+            title:     card.name,
+            tags,                              // Low Carb, High Carb, Fisch, …
+            lastEaten: existing?.lastEaten || null,
+          });
+        });
+        return; // Wochentag-Verarbeitung überspringen
+      }
+
       if (!TRELLO_DAY_LISTS.includes(list.name)) return;
 
-      const cards = list.cards || [];
+      // ── Wochenplan: Karten in Frühstück/Mittag/Abend einteilen ──
+      const cards  = list.cards || [];
       const tagPlan = { Frühstück: null, Mittag: null, Abend: null, sonstige: [] };
 
       cards.forEach(card => {
         const { mealTime, tags } = parseCardLabels(card);
         const entry = { title: card.name, tags };
-
-        // Kein Mahlzeit-Label erkannt? Dann ist die Karte erfahrungsgemäß
-        // das Hauptgericht des Tages -- als "Abend" einsortieren, sofern
-        // der Slot noch frei ist, statt die Karte unsichtbar zu machen.
-        const slot = mealTime || (tagPlan.Abend === null ? 'Abend' : null);
+        const slot  = mealTime || (tagPlan.Abend === null ? 'Abend' : null);
 
         if (slot && tagPlan[slot] === null) {
           tagPlan[slot] = entry;
         } else {
-          // Slot schon belegt (z.B. zwei Karten ohne Label, oder doppeltes
-          // Mahlzeit-Label) -- nichts verschwindet, landet unter "sonstige".
           tagPlan.sonstige.push(entry);
         }
 
-        // Zutaten aus JEDER Karte des Tages sammeln (Konvention: eine
-        // Zutat pro Zeile, optional mit "-"/"*" davor; URL-Zeilen werden
-        // ignoriert, damit Rezept-Links nicht in der Einkaufsliste landen).
         if (card.desc) {
           card.desc.split('\n').forEach(line => {
             if (isUrlLine(line)) return;
@@ -1984,15 +2295,12 @@ async function syncTrello() {
     });
 
     save('essenWoche', essenWoche);
+    if (newPool.length) LS.set('ff_gerichtPool', newPool);
 
-    // Einkaufsliste: Trello-Einträge ersetzen, Rest behalten
-    const behalten = state.einkauf.filter(i => i.source !== 'rezept');
+    const behalten  = state.einkauf.filter(i => i.source !== 'rezept');
     const neueItems = einkaufNeu.map(i => ({
-      id: 'tr_' + uid(),
-      title: i.title,
-      kategorie: guessKategorie(i.title),
-      checked: false,
-      source: 'rezept',
+      id: 'tr_' + uid(), title: i.title,
+      kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
     }));
     save('einkauf', dedupeEinkauf([...behalten, ...neueItems]));
 
@@ -2003,14 +2311,113 @@ async function syncTrello() {
   }
 }
 
-function dedupeEinkauf(items) {
-  const seen = new Set();
-  return items.filter(i => {
-    const key = i.title.toLowerCase().trim();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+// ── ESSENSPLAN-VORSCHLÄGE ─────────────────────────────────────
+
+// Feste Regeln pro Wochentag. Konfigurierbar über
+// LocalStorage (ff_wochenregeln), hier die Defaults.
+const WOCHENREGELN_DEFAULT = {
+  Freitag:  { fixLabel: 'Fisch',     fixText: 'Fisch (Freitag-Regel)' },
+  Samstag:  { preferTag: 'High carb' },
+};
+
+function getWochenregeln() {
+  return LS.get('ff_wochenregeln', WOCHENREGELN_DEFAULT);
+}
+
+// Sortiert den Pool nach Priorität: lastEaten null > ältester Datumswert.
+// Innerhalb gleicher Priorität: zufällig mischen (Fisher-Yates) damit
+// nicht immer dieselbe Reihenfolge entsteht.
+function sortedPool(pool, excludeTitles = []) {
+  const available = pool.filter(g => !excludeTitles.includes(g.title));
+  return available.sort((a, b) => {
+    if (!a.lastEaten && !b.lastEaten) return Math.random() - 0.5;
+    if (!a.lastEaten) return -1;
+    if (!b.lastEaten) return 1;
+    return new Date(a.lastEaten) - new Date(b.lastEaten);
   });
+}
+
+function buildWochenvorschlag() {
+  const pool     = LS.get('ff_gerichtPool', []);
+  const regeln   = getWochenregeln();
+  const days     = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  const vorschlag = {};
+  const used     = []; // bereits verplante Gerichte in dieser Woche
+
+  days.forEach(day => {
+    const regel = regeln[day];
+
+    // 1) Fester Tag mit fixem Label (z.B. Freitag = Fisch)
+    if (regel?.fixLabel) {
+      const match = pool.find(g =>
+        g.tags.some(t => t.toLowerCase().includes(regel.fixLabel.toLowerCase()))
+        && !used.includes(g.title)
+      );
+      if (match) {
+        vorschlag[day] = { title: match.title, tags: match.tags, poolId: match.id };
+        used.push(match.title);
+        return;
+      }
+      // Fallback: Freitext wenn kein passendes Gericht gefunden
+      vorschlag[day] = { title: regel.fixText || regel.fixLabel, tags: [], poolId: null };
+      return;
+    }
+
+    // 2) Tag mit Tag-Präferenz (z.B. Samstag = High Carb bevorzugt)
+    if (regel?.preferTag) {
+      const preferred = sortedPool(pool, used)
+        .filter(g => g.tags.some(t => t.toLowerCase() === regel.preferTag.toLowerCase()));
+      const pick = preferred[0] || sortedPool(pool, used)[0];
+      if (pick) {
+        vorschlag[day] = { title: pick.title, tags: pick.tags, poolId: pick.id };
+        used.push(pick.title);
+      } else {
+        vorschlag[day] = null;
+      }
+      return;
+    }
+
+    // 3) Flexibler Tag: ältestes lastEaten, Low Carb bevorzugt
+    const candidates = sortedPool(pool, used);
+    // Leicht bevorzuge Low-Carb-Gerichte (aber nicht erzwingen)
+    const lowCarb = candidates.filter(g =>
+      g.tags.some(t => t.toLowerCase().includes('low carb'))
+    );
+    const pick = (lowCarb[0] && Math.random() > 0.25) ? lowCarb[0] : candidates[0];
+    if (pick) {
+      vorschlag[day] = { title: pick.title, tags: pick.tags, poolId: pick.id };
+      used.push(pick.title);
+    } else {
+      vorschlag[day] = null;
+    }
+  });
+
+  return vorschlag;
+}
+
+// Markiert ein Gericht als heute gegessen und aktualisiert den Pool.
+function markAsEaten(poolId) {
+  if (!poolId) return;
+  const pool = LS.get('ff_gerichtPool', []);
+  const updated = pool.map(g =>
+    g.id === poolId ? { ...g, lastEaten: today() } : g
+  );
+  LS.set('ff_gerichtPool', updated);
+}
+
+function dedupeEinkauf(items) {
+  // Gleiche Zutat aus mehreren Tagen/Quellen: nur einmal einkaufen,
+  // aber die Häufigkeit merken (wird als Hinweis in der Liste gezeigt).
+  const map = new Map();
+  items.forEach(i => {
+    const key = i.title.toLowerCase().trim();
+    if (map.has(key)) {
+      map.get(key).count = (map.get(key).count || 1) + 1;
+    } else {
+      map.set(key, { ...i, count: 1 });
+    }
+  });
+  return Array.from(map.values());
 }
 
 // ── TOAST (kleines Feedback-UI) ───────────────────────────────
