@@ -564,11 +564,22 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   color: #fff;
   font-size: 0.75rem;
 }
+.einkauf-item-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .einkauf-item-title {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--ink);
-  flex: 1;
+}
+.einkauf-menge {
+  font-size: 0.75rem;
+  color: var(--green);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 .einkauf-item.checked .einkauf-item-title {
   text-decoration: line-through;
@@ -1146,13 +1157,13 @@ const DEFAULTS = {
   ],
 
   essenWoche: {
-    Montag:     { Frühstück: null, Mittag: { title: 'Spaghetti Bolognese', tags: [] }, Abend: { title: 'Salat', tags: [] }, sonstige: [] },
-    Dienstag:   { Frühstück: null, Mittag: { title: 'Hühnersuppe', tags: [] },          Abend: { title: 'Brot', tags: [] },  sonstige: [] },
-    Mittwoch:   { Frühstück: { title: 'Pfannkuchen', tags: [] }, Mittag: null,           Abend: null,                        sonstige: [] },
-    Donnerstag: { Frühstück: null, Mittag: { title: 'Lachs mit Reis', tags: [] },       Abend: { title: 'Brokkoli', tags: [] }, sonstige: [] },
-    Freitag:    { Frühstück: null, Mittag: { title: 'Pizza', tags: [] },                 Abend: { title: 'Eis', tags: [] },   sonstige: [] },
-    Samstag:    { Frühstück: null, Mittag: null, Abend: { title: 'Grillen', tags: [] },  sonstige: [] },
-    Sonntag:    { Frühstück: null, Mittag: null, Abend: null,                            sonstige: [] },
+    Montag:     { Frühstück: [], Mittag: [{ title: 'Spaghetti Bolognese', tags: [] }], Abend: [{ title: 'Salat', tags: [] }], sonstige: [] },
+    Dienstag:   { Frühstück: [], Mittag: [{ title: 'Hühnersuppe', tags: [] }],         Abend: [{ title: 'Brot', tags: [] }],  sonstige: [] },
+    Mittwoch:   { Frühstück: [{ title: 'Pfannkuchen', tags: [] }], Mittag: [],         Abend: [],                             sonstige: [] },
+    Donnerstag: { Frühstück: [], Mittag: [{ title: 'Lachs mit Reis', tags: [] }],      Abend: [{ title: 'Brokkoli', tags: [] }], sonstige: [] },
+    Freitag:    { Frühstück: [], Mittag: [{ title: 'Pizza', tags: [] }],               Abend: [{ title: 'Eis', tags: [] }],   sonstige: [] },
+    Samstag:    { Frühstück: [], Mittag: [], Abend: [{ title: 'Grillen', tags: [] }],  sonstige: [] },
+    Sonntag:    { Frühstück: [], Mittag: [], Abend: [],                                sonstige: [] },
   },
 
   orte: [
@@ -1309,6 +1320,41 @@ function guessKategorie(title) {
   return 'Sonstiges';
 }
 
+// Parst eine Zutatenzeile mit optionaler Mengenangabe vorne.
+// Format: "[Menge][Einheit] Produktname"
+// Beispiele:
+//   "150g Hähnchenbrust"  → { title: "Hähnchenbrust", menge: 150, einheit: "g" }
+//   "2 Eier"              → { title: "Eier",           menge: 2,   einheit: "St" }
+//   "1.5l Milch"          → { title: "Milch",          menge: 1.5, einheit: "l" }
+//   "Salz"                → { title: "Salz",           menge: null, einheit: null }
+const EINHEITEN = ['kg','g','ml','l','tl','el','st','stk','pck','prise','bund','scheib','scheibe'];
+function parseZutat(line) {
+  const clean = line.replace(/^[-*•]\s*/, '').trim();
+  if (!clean) return null;
+
+  // Muster: optionale Zahl (inkl. Dezimal mit . oder ,), optionale Einheit, dann Name
+  const m = clean.match(/^(\d+[.,]?\d*)\s*([a-zäöü]+\.?)?\s+(.+)$/i);
+  if (m) {
+    const menge   = parseFloat(m[1].replace(',', '.'));
+    const einheit = m[2]
+      ? EINHEITEN.includes(m[2].toLowerCase().replace('.',''))
+        ? m[2].toLowerCase().replace('.','')
+        : null
+      : null;
+    const title   = einheit ? m[3].trim() : clean; // wenn Einheit unbekannt, alles als Titel
+    return { title: einheit ? m[3].trim() : clean.replace(/^\d+[.,]?\d*\s+/, '').trim(),
+             menge, einheit: einheit || (m[2] ? null : null), raw: clean };
+  }
+
+  // Zahl ohne Einheit am Anfang: "2 Eier"
+  const m2 = clean.match(/^(\d+[.,]?\d*)\s+(.+)$/);
+  if (m2) {
+    return { title: m2[2].trim(), menge: parseFloat(m2[1].replace(',','.')), einheit: 'St', raw: clean };
+  }
+
+  return { title: clean, menge: null, einheit: null, raw: clean };
+}
+
 // ── RENDER FUNCTIONS ──────────────────────────────────────────
 
 function renderHeader() {
@@ -1393,25 +1439,33 @@ function renderTermine() {
 }
 
 function renderEssenHeute() {
-  const dn = dayName();
+  const dn   = dayName();
   const meal = state.essenWoche[dn] || {};
-  const hauptmahlzeit = meal.Mittag || meal.Abend || meal.Frühstück || null;
+  const toArr = v => !v ? [] : Array.isArray(v) ? v : [v];
 
-  document.getElementById('essenGericht').textContent = hauptmahlzeit
-    ? hauptmahlzeit.title
+  // Hauptmahlzeit: erster Eintrag aus Mittag, sonst Abend, sonst Frühstück
+  const mittagArr    = toArr(meal.Mittag);
+  const abendArr     = toArr(meal.Abend);
+  const fruehArr     = toArr(meal.Frühstück);
+  const hauptArr     = mittagArr.length ? mittagArr : abendArr.length ? abendArr : fruehArr;
+  const hauptmahlzeit = hauptArr[0] || null;
+
+  // Mehrere Einträge im Haupt-Slot: kommasepariert anzeigen
+  document.getElementById('essenGericht').textContent = hauptArr.length
+    ? hauptArr.map(e => e.title).join(', ')
     : 'Noch kein Gericht geplant';
 
   const extras = document.getElementById('essenExtras');
   const badges = [];
 
-  // Andere Mahlzeiten des Tages kurz andeuten
-  if (meal.Frühstück && hauptmahlzeit !== meal.Frühstück) badges.push('🥐 ' + meal.Frühstück.title);
-  if (meal.Abend && hauptmahlzeit !== meal.Abend) badges.push('🌙 ' + meal.Abend.title);
+  // Andere Slots kurz andeuten (nur erster Eintrag)
+  if (fruehArr.length && hauptArr !== fruehArr)
+    badges.push('🥐 ' + fruehArr.map(e => e.title).join(', '));
+  if (abendArr.length && hauptArr !== abendArr)
+    badges.push('🌙 ' + abendArr.map(e => e.title).join(', '));
 
-  // Ernährungs-Tags der Hauptmahlzeit (z.B. Low Carb)
-  if (hauptmahlzeit?.tags?.length) {
-    hauptmahlzeit.tags.forEach(t => badges.push(t));
-  }
+  // Tags der Hauptmahlzeit
+  if (hauptmahlzeit?.tags?.length) hauptmahlzeit.tags.forEach(t => badges.push(t));
 
   extras.innerHTML = badges.map(t => `<span class="essen-tag">${t}</span>`).join('');
 }
@@ -1526,24 +1580,33 @@ function renderEssenView() {
     const label   = formatDayLabel(dt);
     const isToday = d === dn;
     const m       = state.essenWoche[d] || {};
-    const hatEintrag = MEAL_TIME_ORDER.some(mt => m[mt.key]);
+
+    // Slot ist jetzt immer ein Array – auch bei alten Daten (null/object) absichern
+    const toArr = v => !v ? [] : Array.isArray(v) ? v : [v];
+    const hatEintrag = MEAL_TIME_ORDER.some(mt => toArr(m[mt.key]).length > 0);
 
     const zeilen = MEAL_TIME_ORDER.map(mt => {
-      const entry = m[mt.key];
-      if (!entry) return '';
-      const tagBadges = (entry.tags || []).map(t =>
-        `<span class="essen-tag" style="margin-left:6px;">${t}</span>`).join('');
-      // "Als gegessen markieren"-Button nur für Abend-Einträge mit Pool-Bezug
-      const gegessenBtn = (mt.key === 'Abend' && entry.poolId)
-        ? `<button class="gegessen-btn" data-pid="${entry.poolId}" title="Als gegessen markieren">✓</button>`
-        : '';
-      return `
-        <div class="essen-mahlzeit-row">
-          <span class="essen-mahlzeit-icon">${mt.icon}</span>
-          <span class="essen-mahlzeit-titel">${entry.title}</span>
-          ${tagBadges}
-          ${gegessenBtn}
-        </div>`;
+      const entries = toArr(m[mt.key]);
+      if (!entries.length) return '';
+
+      return entries.map((entry, idx) => {
+        const tagBadges = (entry.tags || []).map(t =>
+          `<span class="essen-tag" style="margin-left:6px;">${t}</span>`).join('');
+        const gegessenBtn = (mt.key === 'Abend' && entry.poolId)
+          ? `<button class="gegessen-btn" data-pid="${entry.poolId}" title="Als gegessen markieren">✓</button>`
+          : '';
+        // Icon nur bei erstem Eintrag pro Slot zeigen
+        const icon = idx === 0
+          ? `<span class="essen-mahlzeit-icon">${mt.icon}</span>`
+          : `<span class="essen-mahlzeit-icon" style="visibility:hidden;">${mt.icon}</span>`;
+        return `
+          <div class="essen-mahlzeit-row">
+            ${icon}
+            <span class="essen-mahlzeit-titel">${entry.title}</span>
+            ${tagBadges}
+            ${gegessenBtn}
+          </div>`;
+      }).join('');
     }).join('');
 
     return `
@@ -1566,10 +1629,7 @@ function renderEssenView() {
     });
   });
 
-  // Modal schließen
-  document.getElementById('vorschlagAbbrechen').onclick = () =>
-    document.getElementById('vorschlagModal').classList.remove('open');
-  document.getElementById('vorschlagUebernehmen').onclick = uebernehmeVorschlag;
+  // Modal schließen -- wird einmalig in init() verdrahtet, nicht hier
 }
 
 // Aktueller Vorschlag zwischenspeichern, damit "Übernehmen" ihn kennt
@@ -1618,15 +1678,17 @@ function uebernehmeVorschlag() {
 
   Object.entries(_aktuellerVorschlag).forEach(([day, gericht]) => {
     if (!gericht) return;
-    if (!essenWoche[day]) essenWoche[day] = { Frühstück: null, Mittag: null, Abend: null, sonstige: [] };
-    // Vorschlag nur eintragen wenn Abend-Slot noch frei (Trello-Daten haben Vorrang)
-    if (!essenWoche[day].Abend) {
-      essenWoche[day].Abend = {
-        title: gericht.title,
-        tags:  gericht.tags,
+    if (!essenWoche[day]) essenWoche[day] = { Frühstück: [], Mittag: [], Abend: [], sonstige: [] };
+    const abend = essenWoche[day].Abend;
+    const abendArr = !abend ? [] : Array.isArray(abend) ? abend : [abend];
+    // Vorschlag nur eintragen wenn Abend-Slot noch leer (Trello-Daten haben Vorrang)
+    if (abendArr.length === 0) {
+      essenWoche[day].Abend = [{
+        title:  gericht.title,
+        tags:   gericht.tags,
         poolId: gericht.poolId,
         source: 'vorschlag',
-      };
+      }];
     }
   });
 
@@ -1655,14 +1717,31 @@ function renderEinkauf() {
         <div class="einkauf-kategorie">
           <div class="einkauf-kat-header">${k}</div>
           <div>
-            ${items.map(item => `
+            ${items.map(item => {
+              // Mengenanzeige: "150g × 4 = 600g" oder "2 St × 3 = 6 St" oder "× 4"
+              let mengeStr = '';
+              if (item.menge !== null && item.einheit && item.count > 1) {
+                const einh = item.einheit === 'st' ? 'St' : item.einheit;
+                const gesamt = Math.round(item.menge * 100) / 100;
+                const einzel = Math.round((item.menge / item.count) * 100) / 100;
+                mengeStr = `<span class="einkauf-menge">${einzel}${einh} × ${item.count} = ${gesamt}${einh}</span>`;
+              } else if (item.menge !== null && item.einheit) {
+                const einh = item.einheit === 'st' ? 'St' : item.einheit;
+                mengeStr = `<span class="einkauf-menge">${item.menge}${einh}</span>`;
+              } else if (item.count > 1) {
+                mengeStr = `<span class="einkauf-count">×${item.count}</span>`;
+              }
+              return `
               <div class="einkauf-item ${item.checked ? 'checked' : ''}" data-eid="${item.id}">
                 <div class="einkauf-cb ${item.checked ? 'checked' : ''}" data-eid="${item.id}">
                   ${item.checked ? '✓' : ''}
                 </div>
-                <span class="einkauf-item-title">${item.title}</span>
-                ${item.count > 1 ? `<span class="einkauf-count">×${item.count}</span>` : ''}
-              </div>`).join('')}
+                <div class="einkauf-item-body">
+                  <span class="einkauf-item-title">${item.title}</span>
+                  ${mengeStr}
+                </div>
+              </div>`;
+            }).join('')}
           </div>
         </div>`;
     }).join('');
@@ -1895,6 +1974,13 @@ function closeTrelloModal() {
   document.getElementById('trelloModal').classList.remove('open');
 }
 
+function setupVorschlagModal() {
+  // Einmalige Verdrahtung – nie innerhalb von renderEssenView() aufrufen!
+  document.getElementById('vorschlagAbbrechen').addEventListener('click', () =>
+    document.getElementById('vorschlagModal').classList.remove('open'));
+  document.getElementById('vorschlagUebernehmen').addEventListener('click', uebernehmeVorschlag);
+}
+
 function setupTrelloModal() {
   document.getElementById('trelloModalCancel').addEventListener('click', closeTrelloModal);
 
@@ -1985,7 +2071,6 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 
 // ── INIT ──────────────────────────────────────────────────────
 function init() {
-  // Widget-Modus: nur Puffer-Kachel, keine Navigation, kein Header
   if (isWidgetMode()) {
     renderWidgetMode();
     return;
@@ -1995,9 +2080,9 @@ function init() {
   renderHome();
   setupEinkauf();
   setupTrelloModal();
+  setupVorschlagModal();
   registerServiceWorker();
 
-  // Google Identity Script lädt asynchron – warten bis verfügbar
   const waitForGoogle = setInterval(() => {
     if (window.google && window.google.accounts) {
       clearInterval(waitForGoogle);
@@ -2005,12 +2090,10 @@ function init() {
     }
   }, 200);
 
-  // Bei bestehender Trello-Verbindung im Hintergrund aktualisieren
   if (getTrelloCreds()?.boardId) {
     syncTrello().then(() => { refreshAllViews(); });
   }
 
-  // Bei bestehender Google-Verbindung im Hintergrund aktualisieren
   if (isGoogleConnected()) {
     Promise.all([syncGoogleCalendar(), syncGoogleTasks()])
       .then(() => { refreshAllViews(); });
@@ -2268,25 +2351,29 @@ async function syncTrello() {
       if (!TRELLO_DAY_LISTS.includes(list.name)) return;
 
       // ── Wochenplan: Karten in Frühstück/Mittag/Abend einteilen ──
-      const cards  = list.cards || [];
-      const tagPlan = { Frühstück: null, Mittag: null, Abend: null, sonstige: [] };
+      const cards   = list.cards || [];
+      const tagPlan = { Frühstück: [], Mittag: [], Abend: [], sonstige: [] };
 
       cards.forEach(card => {
         const { mealTime, tags } = parseCardLabels(card);
         const entry = { title: card.name, tags };
-        const slot  = mealTime || (tagPlan.Abend === null ? 'Abend' : null);
 
-        if (slot && tagPlan[slot] === null) {
-          tagPlan[slot] = entry;
+        if (mealTime) {
+          // Alle Karten mit erkanntem Mahlzeit-Label in den passenden Slot pushen
+          tagPlan[mealTime].push(entry);
+        } else if (tagPlan.Abend.length === 0) {
+          // Keine Label: erste Karte als Standard-Abend-Eintrag
+          tagPlan.Abend.push(entry);
         } else {
+          // Weitere Karten ohne Label landen in sonstige
           tagPlan.sonstige.push(entry);
         }
 
         if (card.desc) {
           card.desc.split('\n').forEach(line => {
             if (isUrlLine(line)) return;
-            const clean = line.replace(/^[-*•]\s*/, '').trim();
-            if (clean) einkaufNeu.push({ title: clean, source: 'rezept' });
+            const zutat = parseZutat(line);
+            if (zutat && zutat.title) einkaufNeu.push({ ...zutat, source: 'rezept' });
           });
         }
       });
@@ -2313,20 +2400,20 @@ async function syncTrello() {
 
 // ── ESSENSPLAN-VORSCHLÄGE ─────────────────────────────────────
 
-// Feste Regeln pro Wochentag. Konfigurierbar über
-// LocalStorage (ff_wochenregeln), hier die Defaults.
+// Feste Regeln pro Wochentag.
+// fixLabel:    Gericht muss dieses Tag-Label haben (z.B. "Fisch")
+// preferTag:   Gericht bevorzugt mit diesem Tag (z.B. "High carb")
+// preferLabel: Gericht bevorzugt mit diesem Meal-Label aus Pool (z.B. "Wochenende")
 const WOCHENREGELN_DEFAULT = {
-  Freitag:  { fixLabel: 'Fisch',     fixText: 'Fisch (Freitag-Regel)' },
-  Samstag:  { preferTag: 'High carb' },
+  Freitag:  { fixLabel: 'Fisch',      fixText: 'Fisch (Freitag-Regel)' },
+  Samstag:  { preferTag: 'High carb', preferLabel: 'Wochenende' },
+  Sonntag:  { preferLabel: 'Wochenende' },
 };
 
 function getWochenregeln() {
   return LS.get('ff_wochenregeln', WOCHENREGELN_DEFAULT);
 }
 
-// Sortiert den Pool nach Priorität: lastEaten null > ältester Datumswert.
-// Innerhalb gleicher Priorität: zufällig mischen (Fisher-Yates) damit
-// nicht immer dieselbe Reihenfolge entsteht.
 function sortedPool(pool, excludeTitles = []) {
   const available = pool.filter(g => !excludeTitles.includes(g.title));
   return available.sort((a, b) => {
@@ -2337,37 +2424,49 @@ function sortedPool(pool, excludeTitles = []) {
   });
 }
 
+// Gibt true zurück wenn ein Gericht ein bestimmtes Label-Wort enthält
+function hasTag(gericht, tagWord) {
+  return gericht.tags.some(t => t.toLowerCase().includes(tagWord.toLowerCase()));
+}
+
 function buildWochenvorschlag() {
-  const pool     = LS.get('ff_gerichtPool', []);
-  const regeln   = getWochenregeln();
-  const days     = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  const pool      = LS.get('ff_gerichtPool', []);
+  const regeln    = getWochenregeln();
+  const days      = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
   const vorschlag = {};
-  const used     = []; // bereits verplante Gerichte in dieser Woche
+  const used      = [];
 
   days.forEach(day => {
     const regel = regeln[day];
 
     // 1) Fester Tag mit fixem Label (z.B. Freitag = Fisch)
     if (regel?.fixLabel) {
-      const match = pool.find(g =>
-        g.tags.some(t => t.toLowerCase().includes(regel.fixLabel.toLowerCase()))
-        && !used.includes(g.title)
-      );
+      const sorted = sortedPool(pool, used);
+      const match  = sorted.find(g => hasTag(g, regel.fixLabel));
       if (match) {
         vorschlag[day] = { title: match.title, tags: match.tags, poolId: match.id };
         used.push(match.title);
-        return;
+      } else {
+        vorschlag[day] = { title: regel.fixText || regel.fixLabel, tags: [], poolId: null };
       }
-      // Fallback: Freitext wenn kein passendes Gericht gefunden
-      vorschlag[day] = { title: regel.fixText || regel.fixLabel, tags: [], poolId: null };
       return;
     }
 
-    // 2) Tag mit Tag-Präferenz (z.B. Samstag = High Carb bevorzugt)
-    if (regel?.preferTag) {
-      const preferred = sortedPool(pool, used)
-        .filter(g => g.tags.some(t => t.toLowerCase() === regel.preferTag.toLowerCase()));
-      const pick = preferred[0] || sortedPool(pool, used)[0];
+    // 2) Wochenende oder preferLabel: bevorzuge Gerichte mit "Wochenende"-Label
+    //    dann zusätzlich preferTag (High carb für Samstag)
+    if (regel?.preferLabel || regel?.preferTag) {
+      let candidates = sortedPool(pool, used);
+
+      if (regel.preferLabel) {
+        const mitLabel = candidates.filter(g => hasTag(g, regel.preferLabel));
+        if (mitLabel.length) candidates = mitLabel;
+      }
+      if (regel.preferTag) {
+        const mitTag = candidates.filter(g => hasTag(g, regel.preferTag));
+        if (mitTag.length) candidates = mitTag;
+      }
+
+      const pick = candidates[0] || sortedPool(pool, used)[0];
       if (pick) {
         vorschlag[day] = { title: pick.title, tags: pick.tags, poolId: pick.id };
         used.push(pick.title);
@@ -2377,13 +2476,10 @@ function buildWochenvorschlag() {
       return;
     }
 
-    // 3) Flexibler Tag: ältestes lastEaten, Low Carb bevorzugt
+    // 3) Flexibler Tag: ältestes lastEaten, Low Carb leicht bevorzugt
     const candidates = sortedPool(pool, used);
-    // Leicht bevorzuge Low-Carb-Gerichte (aber nicht erzwingen)
-    const lowCarb = candidates.filter(g =>
-      g.tags.some(t => t.toLowerCase().includes('low carb'))
-    );
-    const pick = (lowCarb[0] && Math.random() > 0.25) ? lowCarb[0] : candidates[0];
+    const lowCarb    = candidates.filter(g => hasTag(g, 'low carb'));
+    const pick       = (lowCarb[0] && Math.random() > 0.25) ? lowCarb[0] : candidates[0];
     if (pick) {
       vorschlag[day] = { title: pick.title, tags: pick.tags, poolId: pick.id };
       used.push(pick.title);
@@ -2394,7 +2490,6 @@ function buildWochenvorschlag() {
 
   return vorschlag;
 }
-
 // Markiert ein Gericht als heute gegessen und aktualisiert den Pool.
 function markAsEaten(poolId) {
   if (!poolId) return;
@@ -2406,13 +2501,19 @@ function markAsEaten(poolId) {
 }
 
 function dedupeEinkauf(items) {
-  // Gleiche Zutat aus mehreren Tagen/Quellen: nur einmal einkaufen,
-  // aber die Häufigkeit merken (wird als Hinweis in der Liste gezeigt).
+  // Gleiche Zutat: Mengen aufsummieren (150g × 4 Tage = 600g),
+  // bei unbekannter Einheit: nur Anzahl zählen.
   const map = new Map();
   items.forEach(i => {
     const key = i.title.toLowerCase().trim();
     if (map.has(key)) {
-      map.get(key).count = (map.get(key).count || 1) + 1;
+      const existing = map.get(key);
+      existing.count = (existing.count || 1) + 1;
+      if (i.menge !== null && existing.menge !== null && existing.einheit === i.einheit) {
+        existing.menge = Math.round((existing.menge + i.menge) * 100) / 100;
+      } else {
+        existing.menge = null; // Einheiten passen nicht → kein sinnvolles Summieren
+      }
     } else {
       map.set(key, { ...i, count: 1 });
     }
