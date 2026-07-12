@@ -1005,19 +1005,6 @@ body.widget-mode .puffer-breakdown { display: none; }
         <button class="vorschlag-btn" id="vorschlagBtn">✨ Vorschläge erstellen</button>
       </div>
       <div id="essenWoche"></div>
-
-    <!-- VORSCHLAG MODAL -->
-    <div class="modal-overlay" id="vorschlagModal">
-      <div class="modal-box">
-        <div class="modal-title">Vorschläge für diese Woche</div>
-        <p class="modal-hint">Basierend auf deinem Gericht-Pool, Wochenregeln und wann du was zuletzt gegessen hast.</p>
-        <div id="vorschlagListe" class="vorschlag-liste"></div>
-        <div class="modal-actions" style="margin-top:16px;">
-          <button class="modal-btn secondary" id="vorschlagAbbrechen">Abbrechen</button>
-          <button class="modal-btn primary" id="vorschlagUebernehmen">Übernehmen</button>
-        </div>
-      </div>
-    </div>
     </section>
 
     <!-- VIEW: EINKAUF -->
@@ -1097,6 +1084,19 @@ body.widget-mode .puffer-breakdown { display: none; }
         <div class="modal-actions">
           <button class="modal-btn secondary" id="trelloModalCancel">Abbrechen</button>
           <button class="modal-btn primary" id="trelloModalSave">Speichern &amp; Sync</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VORSCHLAG MODAL -->
+    <div class="modal-overlay" id="vorschlagModal">
+      <div class="modal-box">
+        <div class="modal-title">Vorschläge für diese Woche</div>
+        <p class="modal-hint">Basierend auf deinem Gericht-Pool, Wochenregeln und wann du was zuletzt gegessen hast.</p>
+        <div id="vorschlagListe" class="vorschlag-liste"></div>
+        <div class="modal-actions" style="margin-top:16px;">
+          <button class="modal-btn secondary" id="vorschlagAbbrechen">Abbrechen</button>
+          <button class="modal-btn primary" id="vorschlagUebernehmen">Übernehmen</button>
         </div>
       </div>
     </div>
