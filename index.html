@@ -249,6 +249,57 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   color: var(--muted);
   margin-top: 1px;
 }
+.termin-kalendername {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-weight: 600;
+  margin-top: 2px;
+  opacity: 0.75;
+}
+.kalender-farbpunkt {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.kalender-event-kalname {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-weight: 600;
+  opacity: 0.75;
+  margin-left: 4px;
+}
+.kalender-auswahl-hint {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 12px 0 8px;
+}
+.kalender-auswahl-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.kalender-auswahl-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+.kalender-auswahl-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+.kalender-auswahl-name { flex: 1; }
+.kalender-auswahl-loading {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-style: italic;
+}
 
 .naechste-fahrt {
   display: flex;
@@ -1033,6 +1084,10 @@ body.widget-mode .puffer-breakdown { display: none; }
           </div>
           <button class="connect-btn" id="googleConnectBtn">Verbinden</button>
         </div>
+        <div id="kalenderAuswahlWrap" style="display:none;">
+          <div class="kalender-auswahl-hint">Zusätzliche Kalender anzeigen:</div>
+          <div id="kalenderAuswahlListe" class="kalender-auswahl-liste"></div>
+        </div>
 
         <!-- Trello -->
         <div class="connect-row">
@@ -1205,8 +1260,20 @@ let state = {
 function save(key, val) { state[key] = val; LS.set('ff_' + key, val); }
 
 // ── HELPERS ───────────────────────────────────────────────────
+
+// Formatiert ein Date-Objekt als "YYYY-MM-DD" basierend auf der LOKALEN
+// Zeitzone des Geräts -- NICHT über toISOString(), das nach UTC konvertiert
+// und dadurch bei Zeiten nahe Mitternacht auf den falschen Tag springen kann
+// (z.B. Montag 00:00 lokal = Sonntag 22:00 UTC bei Sommerzeit).
+function toLocalDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalDateStr(new Date());
 }
 function uid() {
   return Math.random().toString(36).slice(2, 8);
@@ -1332,26 +1399,35 @@ function parseZutat(line) {
   const clean = line.replace(/^[-*•]\s*/, '').trim();
   if (!clean) return null;
 
-  // Muster: optionale Zahl (inkl. Dezimal mit . oder ,), optionale Einheit, dann Name
-  const m = clean.match(/^(\d+[.,]?\d*)\s*([a-zäöü]+\.?)?\s+(.+)$/i);
-  if (m) {
-    const menge   = parseFloat(m[1].replace(',', '.'));
-    const einheit = m[2]
-      ? EINHEITEN.includes(m[2].toLowerCase().replace('.',''))
-        ? m[2].toLowerCase().replace('.','')
-        : null
-      : null;
-    const title   = einheit ? m[3].trim() : clean; // wenn Einheit unbekannt, alles als Titel
-    return { title: einheit ? m[3].trim() : clean.replace(/^\d+[.,]?\d*\s+/, '').trim(),
-             menge, einheit: einheit || (m[2] ? null : null), raw: clean };
+  // Muster: Zahl direkt gefolgt von einer bekannten Einheit (ohne Leerzeichen
+  // dazwischen erlaubt), dann der Produktname. Bekannte Einheit ist Pflicht
+  // für diesen Zweig -- sonst würde z.B. bei "2 Eier" das "Eier" fälschlich
+  // als Einheitswort geprüft und verworfen werden.
+  const mit_einheit = clean.match(/^(\d+[.,]?\d*)\s*([a-zäöü]+)\.?\s+(.+)$/i);
+  if (mit_einheit) {
+    const einheitWort = mit_einheit[2].toLowerCase().replace('.', '');
+    if (EINHEITEN.includes(einheitWort)) {
+      return {
+        title:   mit_einheit[3].trim(),
+        menge:   parseFloat(mit_einheit[1].replace(',', '.')),
+        einheit: einheitWort,
+        raw: clean,
+      };
+    }
   }
 
-  // Zahl ohne Einheit am Anfang: "2 Eier"
-  const m2 = clean.match(/^(\d+[.,]?\d*)\s+(.+)$/);
-  if (m2) {
-    return { title: m2[2].trim(), menge: parseFloat(m2[1].replace(',','.')), einheit: 'St', raw: clean };
+  // Zahl ohne (erkannte) Einheit am Anfang: "2 Eier", "1 Zwiebel" → Stückzahl
+  const nur_zahl = clean.match(/^(\d+[.,]?\d*)\s+(.+)$/);
+  if (nur_zahl) {
+    return {
+      title:   nur_zahl[2].trim(),
+      menge:   parseFloat(nur_zahl[1].replace(',', '.')),
+      einheit: 'st',
+      raw: clean,
+    };
   }
 
+  // Keine Zahl am Anfang: kein Mengenformat erkennbar
   return { title: clean, menge: null, einheit: null, raw: clean };
 }
 
@@ -1428,9 +1504,11 @@ function renderTermine() {
     ? items.map(t => `
         <li class="termin-item">
           <span class="termin-time">${t.time}</span>
+          ${t.calendarColor ? `<span class="kalender-farbpunkt" style="background:${t.calendarColor};margin-top:4px;"></span>` : ''}
           <div>
             <div class="termin-title">${t.title}</div>
             ${t.subtitle ? `<div class="termin-subtitle">${t.subtitle}</div>` : ''}
+            ${t.calendarName ? `<div class="termin-kalendername">${t.calendarName}</div>` : ''}
           </div>
         </li>`).join('')
     : '<li class="empty-state">Keine Termine heute.</li>';
@@ -1525,7 +1603,7 @@ function renderKalender() {
   wrap.innerHTML = days.map((d, i) => {
     const dt = new Date(monday);
     dt.setDate(monday.getDate() + i);
-    const ds      = dt.toISOString().slice(0, 10);
+    const ds      = toLocalDateStr(dt);
     const label   = formatDayLabel(dt);           // "Montag, 23. Juni"
     const isToday = ds === todayStr;
     const dayTermine = state.termine.filter(t => t.date === ds);
@@ -1540,7 +1618,9 @@ function renderKalender() {
             ? dayTermine.map(t => `
                 <div class="kalender-event">
                   <span class="kalender-event-time">${t.time}</span>
+                  ${t.calendarColor ? `<span class="kalender-farbpunkt" style="background:${t.calendarColor};"></span>` : ''}
                   <span class="kalender-event-title">${t.title}</span>
+                  ${t.calendarName ? `<span class="kalender-event-kalname">${t.calendarName}</span>` : ''}
                 </div>`).join('')
             : '<span style="font-size:.82rem;color:var(--muted);padding-left:4px;">Frei</span>'
           }
@@ -1933,16 +2013,21 @@ function renderConnections() {
   // Google
   const gStatus = document.getElementById('googleStatus');
   const gBtn    = document.getElementById('googleConnectBtn');
+  const kalWrap = document.getElementById('kalenderAuswahlWrap');
+
   if (isGoogleConnected()) {
     gStatus.textContent = 'Verbunden ✓';
     gStatus.classList.add('connected');
     gBtn.textContent = 'Trennen';
     gBtn.onclick = disconnectGoogle;
+    kalWrap.style.display = 'block';
+    renderKalenderAuswahl();
   } else {
     gStatus.textContent = 'Nicht verbunden';
     gStatus.classList.remove('connected');
     gBtn.textContent = 'Verbinden';
     gBtn.onclick = connectGoogle;
+    kalWrap.style.display = 'none';
   }
 
   // Trello
@@ -1960,6 +2045,49 @@ function renderConnections() {
     tBtn.textContent = 'Einrichten';
     tBtn.onclick = openTrelloModal;
   }
+}
+
+// Zeigt Checkboxen für alle verfügbaren Google-Kalender (außer dem
+// primären, der immer automatisch dabei ist). Lädt beim ersten Öffnen
+// die Liste vom Server, danach aus dem Cache für schnelles Rendern.
+async function renderKalenderAuswahl() {
+  const wrap = document.getElementById('kalenderAuswahlListe');
+  let calList = LS.get('ff_calendarListCache', null);
+
+  if (!calList) {
+    wrap.innerHTML = '<div class="kalender-auswahl-loading">Lade Kalenderliste…</div>';
+    calList = await fetchGoogleCalendarList();
+    LS.set('ff_calendarListCache', calList);
+  }
+
+  const selected = getSelectedCalendarIds();
+  const zusatzKalender = calList.filter(c => !c.primary);
+
+  if (!zusatzKalender.length) {
+    wrap.innerHTML = '<div class="kalender-auswahl-loading">Keine weiteren Kalender gefunden.</div>';
+    return;
+  }
+
+  wrap.innerHTML = zusatzKalender.map(c => `
+    <label class="kalender-auswahl-item">
+      <input type="checkbox" data-calid="${c.id}" ${selected.includes(c.id) ? 'checked' : ''} />
+      <span class="kalender-farbpunkt" style="background:${c.color};"></span>
+      <span class="kalender-auswahl-name">${c.name}</span>
+    </label>
+  `).join('');
+
+  wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const ids = new Set(getSelectedCalendarIds());
+      if (cb.checked) ids.add(cb.dataset.calid);
+      else ids.delete(cb.dataset.calid);
+      setSelectedCalendarIds(Array.from(ids));
+      showToast('Wird synchronisiert…');
+      await syncGoogleCalendar();
+      refreshAllViews();
+      showToast('Kalender aktualisiert ✓');
+    });
+  });
 }
 
 // ── TRELLO MODAL ──────────────────────────────────────────────
@@ -2186,6 +2314,37 @@ async function onGoogleConnected() {
 }
 
 // ── GOOGLE CALENDAR ───────────────────────────────────────────
+// Google-Kalenderfarben (calendarListEntry.colorId ist nicht immer gesetzt,
+// backgroundColor ist zuverlässiger und kommt direkt als Hex-Wert).
+async function fetchGoogleCalendarList() {
+  if (!isGoogleConnected()) return [];
+  try {
+    const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+      headers: { Authorization: `Bearer ${googleAccessToken.token}` },
+    });
+    if (!res.ok) throw new Error('CalendarList API: ' + res.status);
+    const data = await res.json();
+    return (data.items || []).map(cal => ({
+      id:      cal.id,
+      name:    cal.summaryOverride || cal.summary || cal.id,
+      color:   cal.backgroundColor || '#4A7C59',
+      primary: !!cal.primary,
+    }));
+  } catch (err) {
+    console.error('Kalenderliste laden fehlgeschlagen:', err);
+    return [];
+  }
+}
+
+// Welche zusätzlichen Kalender (über den primären hinaus) der Nutzer
+// ausgewählt hat. Der primäre Kalender wird immer mit-synchronisiert.
+function getSelectedCalendarIds() {
+  return LS.get('ff_selectedCalendars', []);
+}
+function setSelectedCalendarIds(ids) {
+  LS.set('ff_selectedCalendars', ids);
+}
+
 async function syncGoogleCalendar() {
   if (!isGoogleConnected()) return;
   try {
@@ -2194,33 +2353,49 @@ async function syncGoogleCalendar() {
     const timeMax = new Date(timeMin);
     timeMax.setDate(timeMax.getDate() + 7);
 
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
-      `timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}` +
-      `&singleEvents=true&orderBy=startTime`;
+    const calList = await fetchGoogleCalendarList();
+    const selectedIds = getSelectedCalendarIds();
 
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${googleAccessToken.token}` },
-    });
-    if (!res.ok) throw new Error('Calendar API: ' + res.status);
-    const data = await res.json();
+    // Primärer Kalender immer dabei, plus alle vom Nutzer ausgewählten
+    const calendarsToSync = calList.filter(c => c.primary || selectedIds.includes(c.id));
+    LS.set('ff_calendarListCache', calList); // für die Auswahl-UI
 
-    const gEvents = (data.items || []).map(ev => {
-      const startRaw = ev.start?.dateTime || ev.start?.date;
-      const dt = new Date(startRaw);
-      const isAllDay = !ev.start?.dateTime;
-      return {
-        id: 'g_' + ev.id,
-        time: isAllDay ? 'Ganztägig' : dt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
-        title: ev.summary || '(Ohne Titel)',
-        subtitle: ev.location || '',
-        source: 'google',
-        date: dt.toISOString().slice(0, 10),
-      };
-    });
+    const allEvents = [];
+
+    for (const cal of calendarsToSync) {
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?` +
+        `timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}` +
+        `&singleEvents=true&orderBy=startTime`;
+
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${googleAccessToken.token}` },
+      });
+      if (!res.ok) {
+        console.warn(`Kalender "${cal.name}" konnte nicht geladen werden: ${res.status}`);
+        continue; // ein fehlerhafter Kalender soll die anderen nicht blockieren
+      }
+      const data = await res.json();
+
+      (data.items || []).forEach(ev => {
+        const startRaw = ev.start?.dateTime || ev.start?.date;
+        const dt = new Date(startRaw);
+        const isAllDay = !ev.start?.dateTime;
+        allEvents.push({
+          id:       'g_' + cal.id + '_' + ev.id,
+          time:     isAllDay ? 'Ganztägig' : dt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
+          title:    ev.summary || '(Ohne Titel)',
+          subtitle: ev.location || '',
+          source:   'google',
+          date:     toLocalDateStr(dt),
+          calendarName:  cal.name,
+          calendarColor: cal.color,
+        });
+      });
+    }
 
     // Manuelle Termine behalten, Google-Termine ersetzen
     const manual = state.termine.filter(t => t.source !== 'google');
-    save('termine', [...manual, ...gEvents]);
+    save('termine', [...manual, ...allEvents]);
   } catch (err) {
     console.error('Google Calendar Sync Fehler:', err);
     showToast('Kalender-Sync fehlgeschlagen.');
