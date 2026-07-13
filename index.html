@@ -543,6 +543,39 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   font-weight: 700;
   color: var(--forest);
 }
+.gericht-clickable {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--cream-dim);
+  transition: color 0.15s;
+}
+.gericht-clickable:active { color: var(--green); }
+
+.gericht-auswahl-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+.gericht-auswahl-item {
+  background: var(--cream);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.gericht-auswahl-item:active { background: var(--cream-dim); }
+.gericht-auswahl-titel {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.gericht-auswahl-last {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
 
 /* ===== EINKAUF VIEW ===== */
 .einkauf-add-card {
@@ -1160,6 +1193,18 @@ body.widget-mode .puffer-breakdown { display: none; }
       </div>
     </div>
 
+    <!-- GERICHT AUSWAHL MODAL -->
+    <div class="modal-overlay" id="gerichtAuswahlModal">
+      <div class="modal-box">
+        <div class="modal-title" id="gerichtAuswahlTitel">Gericht wählen</div>
+        <input class="modal-input" id="gerichtAuswahlSuche" placeholder="Suchen…" />
+        <div id="gerichtAuswahlListe" class="gericht-auswahl-liste"></div>
+        <div class="modal-actions" style="margin-top:16px;">
+          <button class="modal-btn secondary" id="gerichtAuswahlAbbrechen">Abbrechen</button>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   <!-- BOTTOM NAV -->
@@ -1679,14 +1724,13 @@ function renderEssenView() {
         const gegessenBtn = (mt.key === 'Abend' && entry.poolId)
           ? `<button class="gegessen-btn" data-pid="${entry.poolId}" title="Als gegessen markieren">✓</button>`
           : '';
-        // Icon nur bei erstem Eintrag pro Slot zeigen
         const icon = idx === 0
           ? `<span class="essen-mahlzeit-icon">${mt.icon}</span>`
           : `<span class="essen-mahlzeit-icon" style="visibility:hidden;">${mt.icon}</span>`;
         return `
           <div class="essen-mahlzeit-row">
             ${icon}
-            <span class="essen-mahlzeit-titel">${entry.title}</span>
+            <span class="essen-mahlzeit-titel gericht-clickable" data-day="${d}" data-slot="${mt.key}" data-idx="${idx}">${entry.title}</span>
             ${tagBadges}
             ${gegessenBtn}
           </div>`;
@@ -1698,9 +1742,16 @@ function renderEssenView() {
         <div class="essen-tag-name" style="${isToday ? 'color:var(--green);font-weight:800;' : ''}">
           ${label}${isToday ? ' · Heute' : ''}
         </div>
-        ${hatEintrag ? zeilen : '<div class="essen-tag-gericht leer">Noch nicht geplant</div>'}
+        ${hatEintrag ? zeilen : `<div class="essen-tag-gericht leer gericht-clickable" data-day="${d}" data-slot="Abend" data-idx="0">Noch nicht geplant</div>`}
       </div>`;
   }).join('');
+
+  // Klick auf ein Gericht (oder "Noch nicht geplant") öffnet die Gericht-Auswahl
+  document.querySelectorAll('.gericht-clickable').forEach(el => {
+    el.addEventListener('click', () => {
+      openGerichtAuswahl(el.dataset.day, el.dataset.slot, parseInt(el.dataset.idx, 10));
+    });
+  });
 
   // "Als gegessen"-Buttons verdrahten
   document.querySelectorAll('.gegessen-btn').forEach(btn => {
@@ -2170,6 +2221,93 @@ function setupVorschlagModal() {
   document.getElementById('vorschlagUebernehmen').addEventListener('click', uebernehmeVorschlag);
 }
 
+// Aktuell offene Auswahl merken (welcher Tag/Slot/Index wird bearbeitet)
+let _gerichtAuswahlZiel = null;
+
+function setupGerichtAuswahlModal() {
+  document.getElementById('gerichtAuswahlAbbrechen').addEventListener('click', () =>
+    document.getElementById('gerichtAuswahlModal').classList.remove('open'));
+
+  document.getElementById('gerichtAuswahlSuche').addEventListener('input', (e) => {
+    renderGerichtAuswahlListe(e.target.value);
+  });
+}
+
+function openGerichtAuswahl(day, slot, idx) {
+  _gerichtAuswahlZiel = { day, slot, idx };
+  document.getElementById('gerichtAuswahlTitel').textContent = `${slot} – ${day}`;
+  document.getElementById('gerichtAuswahlSuche').value = '';
+  renderGerichtAuswahlListe('');
+  document.getElementById('gerichtAuswahlModal').classList.add('open');
+}
+
+function renderGerichtAuswahlListe(filterText) {
+  const pool = LS.get('ff_gerichtPool', []);
+  const wrap = document.getElementById('gerichtAuswahlListe');
+
+  if (!pool.length) {
+    wrap.innerHTML = '<div class="kalender-auswahl-loading">Kein Gericht-Pool geladen. Bitte zuerst Trello synchronisieren.</div>';
+    return;
+  }
+
+  const filtered = filterText
+    ? pool.filter(g => g.title.toLowerCase().includes(filterText.toLowerCase()))
+    : pool;
+
+  // Nach zuletzt gegessen sortieren: am längsten her zuerst (praktisch beim Stöbern)
+  const sorted = [...filtered].sort((a, b) => {
+    if (!a.lastEaten && !b.lastEaten) return a.title.localeCompare(b.title);
+    if (!a.lastEaten) return -1;
+    if (!b.lastEaten) return 1;
+    return new Date(a.lastEaten) - new Date(b.lastEaten);
+  });
+
+  wrap.innerHTML = sorted.length
+    ? sorted.map(g => {
+        const lastHint = g.lastEaten
+          ? `zuletzt ${new Date(g.lastEaten).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}`
+          : 'noch nie gegessen';
+        const tagBadges = (g.tags || []).map(t => `<span class="essen-tag" style="margin-left:4px;">${t}</span>`).join('');
+        return `
+          <div class="gericht-auswahl-item" data-poolid="${g.id}">
+            <div class="gericht-auswahl-titel">${g.title}${tagBadges}</div>
+            <div class="gericht-auswahl-last">${lastHint}</div>
+          </div>`;
+      }).join('')
+    : '<div class="kalender-auswahl-loading">Kein Gericht gefunden.</div>';
+
+  wrap.querySelectorAll('.gericht-auswahl-item').forEach(el => {
+    el.addEventListener('click', () => waehleGericht(el.dataset.poolid));
+  });
+}
+
+function waehleGericht(poolId) {
+  if (!_gerichtAuswahlZiel) return;
+  const pool = LS.get('ff_gerichtPool', []);
+  const gericht = pool.find(g => g.id === poolId);
+  if (!gericht) return;
+
+  const { day, slot, idx } = _gerichtAuswahlZiel;
+  const essenWoche = { ...state.essenWoche };
+  if (!essenWoche[day]) essenWoche[day] = { Frühstück: [], Mittag: [], Abend: [], sonstige: [] };
+
+  const slotArr = Array.isArray(essenWoche[day][slot]) ? [...essenWoche[day][slot]] : [];
+  const neuerEintrag = { title: gericht.title, tags: gericht.tags, poolId: gericht.id, source: 'manuell' };
+
+  if (idx < slotArr.length) {
+    slotArr[idx] = neuerEintrag; // bestehenden Eintrag ersetzen
+  } else {
+    slotArr.push(neuerEintrag); // neuen Eintrag hinzufügen (z.B. "Noch nicht geplant" → erstes Gericht)
+  }
+  essenWoche[day][slot] = slotArr;
+
+  save('essenWoche', essenWoche);
+  document.getElementById('gerichtAuswahlModal').classList.remove('open');
+  renderEssenView();
+  showToast(`${gericht.title} übernommen ✓`);
+  _gerichtAuswahlZiel = null;
+}
+
 function setupTrelloModal() {
   document.getElementById('trelloModalCancel').addEventListener('click', closeTrelloModal);
 
@@ -2270,6 +2408,7 @@ function init() {
   setupEinkauf();
   setupTrelloModal();
   setupVorschlagModal();
+  setupGerichtAuswahlModal();
   registerServiceWorker();
 
   const waitForGoogle = setInterval(() => {
@@ -2623,6 +2762,7 @@ async function syncTrello() {
     const behalten  = state.einkauf.filter(i => i.source !== 'rezept');
     const neueItems = einkaufNeu.map(i => ({
       id: 'tr_' + uid(), title: i.title,
+      menge: i.menge ?? null, einheit: i.einheit ?? null,
       kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
     }));
     save('einkauf', dedupeEinkauf([...behalten, ...neueItems]));
