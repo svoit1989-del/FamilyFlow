@@ -1125,6 +1125,10 @@ body.widget-mode .puffer-breakdown { display: none; }
         <p class="reset-hint" style="margin-top:16px;">Zeigt die rohe Antwort von Google Tasks – hilfreich falls Aufgaben nicht ankommen.</p>
         <button class="reset-btn" id="tasksDebugBtn">Google Tasks prüfen</button>
         <pre id="tasksDebugOutput" class="debug-output" style="display:none;"></pre>
+
+        <p class="reset-hint" style="margin-top:16px;">Zeigt rohe Google-Kalender-Termine und wie die App das Datum daraus berechnet – hilfreich bei Tagesverschiebungen.</p>
+        <button class="reset-btn" id="calDebugBtn">Google Kalender prüfen</button>
+        <pre id="calDebugOutput" class="debug-output" style="display:none;"></pre>
       </div>
     </section>
 
@@ -1892,6 +1896,7 @@ function renderFamilie() {
   document.getElementById('trelloDebugBtn').onclick = debugTrelloStructure;
   document.getElementById('stateDebugBtn').onclick = debugStoredEssenWoche;
   document.getElementById('tasksDebugBtn').onclick = debugGoogleTasks;
+  document.getElementById('calDebugBtn').onclick = debugGoogleCalendar;
 }
 
 // Diagnose: zeigt die rohe Google-Tasks-API-Antwort -- sowohl die Liste
@@ -1926,6 +1931,62 @@ async function debugGoogleTasks() {
     report += JSON.stringify(tasksData.items || tasksData, null, 2);
 
     out.textContent = report;
+  } catch (err) {
+    out.textContent = 'Fehler: ' + err.message;
+  }
+}
+
+// Diagnose: zeigt für jeden Google-Termin das ROHE Datumsfeld von Google
+// neben dem, was toLocalDateStr() daraus berechnet -- trennt zweifelsfrei
+// "Google liefert falsches Datum" von "unsere Berechnung ist falsch".
+async function debugGoogleCalendar() {
+  const out = document.getElementById('calDebugOutput');
+  out.style.display = 'block';
+  out.textContent = 'Lade…';
+
+  if (!isGoogleConnected()) {
+    out.textContent = 'Google ist nicht verbunden.';
+    return;
+  }
+
+  try {
+    const timeMin = new Date();
+    timeMin.setHours(0, 0, 0, 0);
+    const timeMax = new Date(timeMin);
+    timeMax.setDate(timeMax.getDate() + 7);
+
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
+      `timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}` +
+      `&singleEvents=true&orderBy=startTime`;
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${googleAccessToken.token}` },
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      out.textContent = `Fehler (Status ${res.status}):\n` + JSON.stringify(data, null, 2);
+      return;
+    }
+
+    let report = `Browser-Zeitzone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}\n`;
+    report += `timeMin gesendet: ${timeMin.toISOString()}\n`;
+    report += `timeMax gesendet: ${timeMax.toISOString()}\n\n`;
+
+    (data.items || []).forEach(ev => {
+      const startRaw = ev.start?.dateTime || ev.start?.date;
+      const isAllDay = !ev.start?.dateTime;
+      const dt = new Date(startRaw);
+      const berechnetesDatum = toLocalDateStr(dt);
+
+      report += `── "${ev.summary || '(ohne Titel)'}" ──\n`;
+      report += `  Google roh: start.${isAllDay ? 'date' : 'dateTime'} = "${startRaw}"\n`;
+      report += `  new Date() interpretiert als: ${dt.toString()}\n`;
+      report += `  toLocalDateStr() ergibt: ${berechnetesDatum}\n`;
+      report += `  → Wochentag laut Berechnung: ${dt.toLocaleDateString('de-DE', {weekday:'long'})}\n\n`;
+    });
+
+    out.textContent = report || 'Keine Termine in den nächsten 7 Tagen gefunden.';
   } catch (err) {
     out.textContent = 'Fehler: ' + err.message;
   }
