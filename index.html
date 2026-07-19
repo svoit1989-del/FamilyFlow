@@ -550,31 +550,57 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
 }
 .gericht-clickable:active { color: var(--green); }
 
-.gericht-auswahl-liste {
+.gericht-detail-inhalt { margin-top: 8px; }
+.gericht-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.gericht-detail-last {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--cream-dim);
+}
+.gericht-detail-zutaten-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.gericht-detail-zutaten {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 340px;
+  gap: 6px;
+  max-height: 280px;
   overflow-y: auto;
-  margin-top: 12px;
 }
-.gericht-auswahl-item {
+.gericht-detail-zutat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   background: var(--cream);
   border-radius: var(--radius-sm);
-  padding: 11px 14px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.gericht-auswahl-item:active { background: var(--cream-dim); }
-.gericht-auswahl-titel {
-  font-size: 0.9rem;
-  font-weight: 700;
+  padding: 9px 13px;
+  font-size: 0.88rem;
   color: var(--ink);
+  font-weight: 600;
 }
-.gericht-auswahl-last {
-  font-size: 0.72rem;
+.gericht-detail-zutat-menge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+.gericht-detail-hinweis {
+  font-size: 0.85rem;
   color: var(--muted);
-  margin-top: 2px;
+  line-height: 1.45;
+  padding: 8px 0;
 }
 
 /* ===== EINKAUF VIEW ===== */
@@ -678,18 +704,55 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   padding: 2px 8px;
   flex-shrink: 0;
 }
-.einkauf-archive-btn {
-  width: 100%;
-  margin-top: 14px;
-  padding: 14px;
-  background: var(--cream-dim);
+.einkauf-erledigt-toggle {
+  display: none; /* wird per JS auf 'flex' gesetzt sobald Einträge vorhanden */
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 13px 16px;
+  background: #fff;
   border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  cursor: pointer;
   font-size: 0.88rem;
   font-weight: 700;
   color: var(--muted);
-  transition: background 0.15s, color 0.15s;
 }
-.einkauf-archive-btn:active { background: var(--green); color: #fff; }
+.einkauf-erledigt-count-badge {
+  background: var(--cream);
+  border-radius: 99px;
+  padding: 2px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--green);
+}
+.einkauf-erledigt-chevron {
+  margin-left: auto;
+  font-size: 1.1rem;
+  transition: transform 0.2s;
+}
+.einkauf-erledigt-toggle.open .einkauf-erledigt-chevron { transform: rotate(90deg); }
+
+.einkauf-erledigt-wrap {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.einkauf-erledigt-wrap.open { display: flex; }
+.einkauf-erledigt-leeren-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  background: transparent;
+  border: 1px dashed var(--cream-dim);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  transition: color 0.15s, border-color 0.15s;
+}
+.einkauf-erledigt-leeren-btn:active { color: #b84040; border-color: #b84040; }
 
 /* ===== FAMILIE VIEW ===== */
 .connect-row {
@@ -1099,7 +1162,18 @@ body.widget-mode .puffer-breakdown { display: none; }
         <button class="einkauf-add-btn" id="einkaufAddBtn">+</button>
       </div>
       <div id="einkaufListe"></div>
-      <button class="einkauf-archive-btn" id="einkaufArchiveBtn">Erledigt archivieren</button>
+
+      <div class="einkauf-erledigt-toggle" id="einkaufErledigtToggle">
+        <span>✓ Erledigt</span>
+        <span class="einkauf-erledigt-count-badge">
+          <span class="einkauf-erledigt-count">0</span>
+        </span>
+        <span class="einkauf-erledigt-chevron">›</span>
+      </div>
+      <div class="einkauf-erledigt-wrap" id="einkaufErledigtWrap">
+        <div id="einkaufErledigtListe"></div>
+        <button class="einkauf-erledigt-leeren-btn" id="einkaufErledigtLeeren">Erledigt-Liste leeren</button>
+      </div>
     </section>
 
     <!-- VIEW: FAMILIE -->
@@ -1193,14 +1267,13 @@ body.widget-mode .puffer-breakdown { display: none; }
       </div>
     </div>
 
-    <!-- GERICHT AUSWAHL MODAL -->
+    <!-- GERICHT DETAIL MODAL -->
     <div class="modal-overlay" id="gerichtAuswahlModal">
       <div class="modal-box">
-        <div class="modal-title" id="gerichtAuswahlTitel">Gericht wählen</div>
-        <input class="modal-input" id="gerichtAuswahlSuche" placeholder="Suchen…" />
-        <div id="gerichtAuswahlListe" class="gericht-auswahl-liste"></div>
+        <div class="modal-title" id="gerichtAuswahlTitel">Gericht</div>
+        <div id="gerichtAuswahlListe" class="gericht-detail-inhalt"></div>
         <div class="modal-actions" style="margin-top:16px;">
-          <button class="modal-btn secondary" id="gerichtAuswahlAbbrechen">Abbrechen</button>
+          <button class="modal-btn secondary" id="gerichtAuswahlAbbrechen">Schließen</button>
         </div>
       </div>
     </div>
@@ -1301,6 +1374,7 @@ let state = {
   essenWoche:   LS.get('ff_essenWoche',   DEFAULTS.essenWoche),
   orte:         LS.get('ff_orte',         DEFAULTS.orte),
   einkauf:      LS.get('ff_einkauf',      DEFAULTS.einkauf),
+  einkaufErledigt: LS.get('ff_einkaufErledigt', []),
   hinweise:     LS.get('ff_hinweise',     DEFAULTS.hinweise),
   naechsteFahrt:LS.get('ff_fahrt',        DEFAULTS.naechsteFahrt),
   activeView:   'home',
@@ -1375,8 +1449,9 @@ function formatDayShort(date) {
 // ── KAPAZITÄT BERECHNUNG ──────────────────────────────────────
 function calcCapacity() {
   const k = state.kapazitaet;
+  const todayStr = today();
   const aufgabenMin = state.aufgaben
-    .filter(a => !a.done)
+    .filter(a => !a.done && a.date === todayStr)
     .reduce((s, a) => s + (a.duration || 0), 0);
   const aufgabenH = aufgabenMin / 60;
 
@@ -1599,8 +1674,15 @@ function renderEssenHeute() {
 
 function renderAufgaben() {
   const list = document.getElementById('aufgabenList');
-  if (!state.aufgaben.length) { list.innerHTML = '<li class="empty-state">Alle Aufgaben erledigt 🎉</li>'; return; }
-  list.innerHTML = state.aufgaben.map(a => `
+  const todayStr = today();
+  const heutigeAufgaben = state.aufgaben.filter(a => a.date === todayStr);
+
+  if (!heutigeAufgaben.length) {
+    list.innerHTML = '<li class="empty-state">Tag erledigt 🎉</li>';
+    return;
+  }
+
+  list.innerHTML = heutigeAufgaben.map(a => `
     <li class="aufgabe-item">
       <div class="aufgabe-check ${a.done ? 'done' : ''}" data-id="${a.id}">
         ${a.done ? '✓' : ''}
@@ -1811,13 +1893,32 @@ function uebernehmeVorschlag() {
   if (!_aktuellerVorschlag) return;
   const essenWoche = { ...state.essenWoche };
 
+  // Erst prüfen, wie viele Tage bereits einen Abend-Eintrag haben --
+  // danach fragen wir einmal gesammelt nach, statt pro Tag zu unterbrechen.
+  const belegteTage = [];
+  Object.entries(_aktuellerVorschlag).forEach(([day, gericht]) => {
+    if (!gericht) return;
+    const tag = essenWoche[day] || {};
+    const abendArr = Array.isArray(tag.Abend) ? tag.Abend : (tag.Abend ? [tag.Abend] : []);
+    if (abendArr.length > 0) belegteTage.push(day);
+  });
+
+  let ueberschreiben = true;
+  if (belegteTage.length > 0) {
+    ueberschreiben = confirm(
+      `${belegteTage.length} Tag(e) haben bereits ein Abendessen (${belegteTage.join(', ')}).\n\n` +
+      `Mit den neuen Vorschlägen überschreiben?`
+    );
+  }
+
   Object.entries(_aktuellerVorschlag).forEach(([day, gericht]) => {
     if (!gericht) return;
     if (!essenWoche[day]) essenWoche[day] = { Frühstück: [], Mittag: [], Abend: [], sonstige: [] };
     const abend = essenWoche[day].Abend;
     const abendArr = !abend ? [] : Array.isArray(abend) ? abend : [abend];
-    // Vorschlag nur eintragen wenn Abend-Slot noch leer (Trello-Daten haben Vorrang)
-    if (abendArr.length === 0) {
+
+    // Leerer Tag: immer setzen. Belegter Tag: nur setzen wenn Bestätigung erfolgt ist.
+    if (abendArr.length === 0 || ueberschreiben) {
       essenWoche[day].Abend = [{
         title:  gericht.title,
         tags:   gericht.tags,
@@ -1830,7 +1931,7 @@ function uebernehmeVorschlag() {
   save('essenWoche', essenWoche);
   document.getElementById('vorschlagModal').classList.remove('open');
   renderEssenView();
-  showToast('Vorschläge übernommen ✓');
+  showToast(ueberschreiben ? 'Vorschläge übernommen ✓' : 'Nur leere Tage übernommen ✓');
   _aktuellerVorschlag = null;
 }
 
@@ -1844,6 +1945,21 @@ function renderEinkauf() {
     grouped[kat].push(item);
   });
 
+  function mengeStrFor(item) {
+    if (item.menge !== null && item.einheit && item.count > 1) {
+      const einh = item.einheit === 'st' ? 'St' : item.einheit;
+      const gesamt = Math.round(item.menge * 100) / 100;
+      const einzel = Math.round((item.menge / item.count) * 100) / 100;
+      return `<span class="einkauf-menge">${einzel}${einh} × ${item.count} = ${gesamt}${einh}</span>`;
+    } else if (item.menge !== null && item.einheit) {
+      const einh = item.einheit === 'st' ? 'St' : item.einheit;
+      return `<span class="einkauf-menge">${item.menge}${einh}</span>`;
+    } else if (item.count > 1) {
+      return `<span class="einkauf-count">×${item.count}</span>`;
+    }
+    return '';
+  }
+
   wrap.innerHTML = KAT_ORDER
     .filter(k => grouped[k])
     .map(k => {
@@ -1852,40 +1968,57 @@ function renderEinkauf() {
         <div class="einkauf-kategorie">
           <div class="einkauf-kat-header">${k}</div>
           <div>
-            ${items.map(item => {
-              // Mengenanzeige: "150g × 4 = 600g" oder "2 St × 3 = 6 St" oder "× 4"
-              let mengeStr = '';
-              if (item.menge !== null && item.einheit && item.count > 1) {
-                const einh = item.einheit === 'st' ? 'St' : item.einheit;
-                const gesamt = Math.round(item.menge * 100) / 100;
-                const einzel = Math.round((item.menge / item.count) * 100) / 100;
-                mengeStr = `<span class="einkauf-menge">${einzel}${einh} × ${item.count} = ${gesamt}${einh}</span>`;
-              } else if (item.menge !== null && item.einheit) {
-                const einh = item.einheit === 'st' ? 'St' : item.einheit;
-                mengeStr = `<span class="einkauf-menge">${item.menge}${einh}</span>`;
-              } else if (item.count > 1) {
-                mengeStr = `<span class="einkauf-count">×${item.count}</span>`;
-              }
-              return `
-              <div class="einkauf-item ${item.checked ? 'checked' : ''}" data-eid="${item.id}">
-                <div class="einkauf-cb ${item.checked ? 'checked' : ''}" data-eid="${item.id}">
-                  ${item.checked ? '✓' : ''}
-                </div>
+            ${items.map(item => `
+              <div class="einkauf-item" data-eid="${item.id}">
+                <div class="einkauf-cb" data-eid="${item.id}"></div>
                 <div class="einkauf-item-body">
                   <span class="einkauf-item-title">${item.title}</span>
-                  ${mengeStr}
+                  ${mengeStrFor(item)}
                 </div>
-              </div>`;
-            }).join('')}
+              </div>`).join('')}
           </div>
         </div>`;
     }).join('');
 
+  // Checkbox-Klick: Artikel SOFORT nach "Erledigt" verschieben
   wrap.querySelectorAll('.einkauf-cb').forEach(el => {
     el.addEventListener('click', () => {
       const id = el.dataset.eid;
-      const updated = state.einkauf.map(i => i.id === id ? { ...i, checked: !i.checked } : i);
-      save('einkauf', updated);
+      const item = state.einkauf.find(i => i.id === id);
+      if (!item) return;
+      save('einkauf', state.einkauf.filter(i => i.id !== id));
+      save('einkaufErledigt', [{ ...item, checked: true }, ...state.einkaufErledigt]);
+      renderEinkauf();
+    });
+  });
+
+  renderEinkaufErledigt();
+}
+
+function renderEinkaufErledigt() {
+  const toggle  = document.getElementById('einkaufErledigtToggle');
+  const wrap    = document.getElementById('einkaufErledigtListe');
+  const count   = state.einkaufErledigt.length;
+
+  toggle.querySelector('.einkauf-erledigt-count').textContent = count;
+  toggle.style.display = count > 0 ? 'flex' : 'none';
+
+  wrap.innerHTML = state.einkaufErledigt.map(item => `
+    <div class="einkauf-item checked" data-eid="${item.id}">
+      <div class="einkauf-cb checked" data-eid="${item.id}">✓</div>
+      <div class="einkauf-item-body">
+        <span class="einkauf-item-title">${item.title}</span>
+      </div>
+    </div>`).join('');
+
+  // Klick auf erledigten Artikel: zurück in die aktive Liste holen
+  wrap.querySelectorAll('.einkauf-cb').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.eid;
+      const item = state.einkaufErledigt.find(i => i.id === id);
+      if (!item) return;
+      save('einkaufErledigt', state.einkaufErledigt.filter(i => i.id !== id));
+      save('einkauf', [...state.einkauf, { ...item, checked: false }]);
       renderEinkauf();
     });
   });
@@ -1907,9 +2040,18 @@ function setupEinkauf() {
   btn.addEventListener('click', addItem);
   input.addEventListener('keydown', e => { if (e.key === 'Enter') addItem(); });
 
-  document.getElementById('einkaufArchiveBtn').addEventListener('click', () => {
-    const kept = state.einkauf.filter(i => !i.checked);
-    save('einkauf', kept);
+  // Erledigt-Bereich auf-/zuklappen
+  document.getElementById('einkaufErledigtToggle').addEventListener('click', () => {
+    const wrap = document.getElementById('einkaufErledigtWrap');
+    wrap.classList.toggle('open');
+    document.getElementById('einkaufErledigtToggle').classList.toggle('open');
+  });
+
+  // Erledigt-Liste komplett leeren
+  document.getElementById('einkaufErledigtLeeren').addEventListener('click', () => {
+    if (!state.einkaufErledigt.length) return;
+    if (!confirm(`${state.einkaufErledigt.length} erledigte Artikel endgültig löschen?`)) return;
+    save('einkaufErledigt', []);
     renderEinkauf();
   });
 }
@@ -2222,90 +2364,70 @@ function setupVorschlagModal() {
 }
 
 // Aktuell offene Auswahl merken (welcher Tag/Slot/Index wird bearbeitet)
-let _gerichtAuswahlZiel = null;
+// (kein Auswahl-Ziel mehr nötig -- Modal zeigt nur Details, ändert nichts)
 
 function setupGerichtAuswahlModal() {
   document.getElementById('gerichtAuswahlAbbrechen').addEventListener('click', () =>
     document.getElementById('gerichtAuswahlModal').classList.remove('open'));
-
-  document.getElementById('gerichtAuswahlSuche').addEventListener('input', (e) => {
-    renderGerichtAuswahlListe(e.target.value);
-  });
 }
 
+// Zeigt die Detailansicht einer Trello-Karte: Titel, Labels/Tags,
+// Zutaten (aus der Kartenbeschreibung geparst), inkl. Mengenangaben.
+// day/slot/idx werden mitgegeben um bei fehlendem Pool-Bezug einen
+// sinnvollen Hinweis zu zeigen -- es wird NICHTS mehr gewechselt/ersetzt,
+// nur angezeigt.
 function openGerichtAuswahl(day, slot, idx) {
-  _gerichtAuswahlZiel = { day, slot, idx };
-  document.getElementById('gerichtAuswahlTitel').textContent = `${slot} – ${day}`;
-  document.getElementById('gerichtAuswahlSuche').value = '';
-  renderGerichtAuswahlListe('');
-  document.getElementById('gerichtAuswahlModal').classList.add('open');
-}
+  const m = state.essenWoche[day] || {};
+  const slotArr = Array.isArray(m[slot]) ? m[slot] : (m[slot] ? [m[slot]] : []);
+  const entry = slotArr[idx];
 
-function renderGerichtAuswahlListe(filterText) {
-  const pool = LS.get('ff_gerichtPool', []);
+  document.getElementById('gerichtAuswahlTitel').textContent = entry?.title || `${slot} – ${day}`;
+
   const wrap = document.getElementById('gerichtAuswahlListe');
 
-  if (!pool.length) {
-    wrap.innerHTML = '<div class="kalender-auswahl-loading">Kein Gericht-Pool geladen. Bitte zuerst Trello synchronisieren.</div>';
+  if (!entry) {
+    wrap.innerHTML = '<div class="kalender-auswahl-loading">Noch kein Gericht für diesen Slot geplant.</div>';
+    document.getElementById('gerichtAuswahlModal').classList.add('open');
     return;
   }
 
-  const filtered = filterText
-    ? pool.filter(g => g.title.toLowerCase().includes(filterText.toLowerCase()))
-    : pool;
-
-  // Nach zuletzt gegessen sortieren: am längsten her zuerst (praktisch beim Stöbern)
-  const sorted = [...filtered].sort((a, b) => {
-    if (!a.lastEaten && !b.lastEaten) return a.title.localeCompare(b.title);
-    if (!a.lastEaten) return -1;
-    if (!b.lastEaten) return 1;
-    return new Date(a.lastEaten) - new Date(b.lastEaten);
-  });
-
-  wrap.innerHTML = sorted.length
-    ? sorted.map(g => {
-        const lastHint = g.lastEaten
-          ? `zuletzt ${new Date(g.lastEaten).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}`
-          : 'noch nie gegessen';
-        const tagBadges = (g.tags || []).map(t => `<span class="essen-tag" style="margin-left:4px;">${t}</span>`).join('');
-        return `
-          <div class="gericht-auswahl-item" data-poolid="${g.id}">
-            <div class="gericht-auswahl-titel">${g.title}${tagBadges}</div>
-            <div class="gericht-auswahl-last">${lastHint}</div>
-          </div>`;
-      }).join('')
-    : '<div class="kalender-auswahl-loading">Kein Gericht gefunden.</div>';
-
-  wrap.querySelectorAll('.gericht-auswahl-item').forEach(el => {
-    el.addEventListener('click', () => waehleGericht(el.dataset.poolid));
-  });
-}
-
-function waehleGericht(poolId) {
-  if (!_gerichtAuswahlZiel) return;
   const pool = LS.get('ff_gerichtPool', []);
-  const gericht = pool.find(g => g.id === poolId);
-  if (!gericht) return;
+  const poolEintrag = entry.poolId ? pool.find(g => g.id === entry.poolId) : null;
 
-  const { day, slot, idx } = _gerichtAuswahlZiel;
-  const essenWoche = { ...state.essenWoche };
-  if (!essenWoche[day]) essenWoche[day] = { Frühstück: [], Mittag: [], Abend: [], sonstige: [] };
-
-  const slotArr = Array.isArray(essenWoche[day][slot]) ? [...essenWoche[day][slot]] : [];
-  const neuerEintrag = { title: gericht.title, tags: gericht.tags, poolId: gericht.id, source: 'manuell' };
-
-  if (idx < slotArr.length) {
-    slotArr[idx] = neuerEintrag; // bestehenden Eintrag ersetzen
-  } else {
-    slotArr.push(neuerEintrag); // neuen Eintrag hinzufügen (z.B. "Noch nicht geplant" → erstes Gericht)
+  if (!poolEintrag) {
+    // Gericht ohne Trello-Pool-Bezug (z.B. manuell eingetragen oder aus
+    // dem normalen Wochentags-Sync ohne Verknüpfung zur Hauptgerichte-Liste)
+    wrap.innerHTML = `
+      <div class="gericht-detail-hinweis">Für dieses Gericht liegen keine Trello-Details vor (kein Eintrag im Hauptgerichte-Pool gefunden).</div>
+      ${(entry.tags || []).length ? `<div class="gericht-detail-tags">${entry.tags.map(t => `<span class="essen-tag">${t}</span>`).join('')}</div>` : ''}
+    `;
+    document.getElementById('gerichtAuswahlModal').classList.add('open');
+    return;
   }
-  essenWoche[day][slot] = slotArr;
 
-  save('essenWoche', essenWoche);
-  document.getElementById('gerichtAuswahlModal').classList.remove('open');
-  renderEssenView();
-  showToast(`${gericht.title} übernommen ✓`);
-  _gerichtAuswahlZiel = null;
+  // Vollständige Detailansicht aus dem Pool
+  const tagBadges = (poolEintrag.tags || []).map(t => `<span class="essen-tag">${t}</span>`).join('');
+  const lastHint = poolEintrag.lastEaten
+    ? `Zuletzt gegessen: ${new Date(poolEintrag.lastEaten).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}`
+    : 'Noch nie als gegessen markiert';
+
+  const zutatenListe = (poolEintrag.zutaten || []).length
+    ? poolEintrag.zutaten.map(z => {
+        const mengeStr = z.menge !== null && z.einheit
+          ? `<span class="gericht-detail-zutat-menge">${z.menge}${z.einheit === 'st' ? ' St' : z.einheit}</span>`
+          : '';
+        return `<div class="gericht-detail-zutat"><span>${z.title}</span>${mengeStr}</div>`;
+      }).join('')
+    : '<div class="kalender-auswahl-loading">Keine Zutaten in der Trello-Beschreibung hinterlegt.</div>';
+
+  wrap.innerHTML = `
+    ${tagBadges ? `<div class="gericht-detail-tags">${tagBadges}</div>` : ''}
+    <div class="gericht-detail-last">${lastHint}</div>
+    <div class="gericht-detail-zutaten-label">Zutaten</div>
+    <div class="gericht-detail-zutaten">${zutatenListe}</div>
+  `;
+
+  document.getElementById('gerichtAuswahlModal').classList.add('open');
 }
 
 function setupTrelloModal() {
@@ -2612,14 +2734,20 @@ async function syncGoogleTasks() {
     if (!res.ok) throw new Error('Tasks API: ' + res.status);
     const data = await res.json();
 
-    const gTasks = (data.items || []).map(t => ({
-      id: 'g_' + t.id,
-      title: t.title || '(Ohne Titel)',
-      duration: 0,
-      done: t.status === 'completed',
-      source: 'google',
-      date: today(),
-    }));
+    const gTasks = (data.items || []).map(t => {
+      // Google liefert 'due' im Format "2026-06-22T00:00:00.000Z" -- das ist
+      // absichtlich immer UTC-Mitternacht (Tasks kennen keine Uhrzeit), daher
+      // reicht hier ein direktes Datum-Parsing ohne Zeitzonen-Korrektur.
+      const dueDate = t.due ? t.due.slice(0, 10) : null;
+      return {
+        id: 'g_' + t.id,
+        title: t.title || '(Ohne Titel)',
+        duration: 0,
+        done: t.status === 'completed',
+        source: 'google',
+        date: dueDate, // null = kein Fälligkeitsdatum gesetzt
+      };
+    });
 
     const manual = state.aufgaben.filter(a => a.source !== 'google');
     save('aufgaben', [...manual, ...gTasks]);
@@ -2713,11 +2841,22 @@ async function syncTrello() {
         list.cards.forEach(card => {
           const { tags } = parseCardLabels(card);
           const existing = poolMap[card.name];
+
+          // Zutaten aus der Beschreibung geparst für die Detailansicht
+          const zutaten = card.desc
+            ? card.desc.split('\n')
+                .filter(line => !isUrlLine(line))
+                .map(line => parseZutat(line))
+                .filter(z => z && z.title)
+            : [];
+
           newPool.push({
             id:        existing?.id || 'gp_' + uid(),
             title:     card.name,
             tags,                              // Low Carb, High Carb, Fisch, …
             lastEaten: existing?.lastEaten || null,
+            desc:      card.desc || '',
+            zutaten,
           });
         });
         return; // Wochentag-Verarbeitung überspringen
