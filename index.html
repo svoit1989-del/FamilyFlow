@@ -443,6 +443,52 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   margin-bottom: 6px;
   letter-spacing: -0.01em;
 }
+
+.kuehltruhe-card { margin-top: 14px; }
+.kuehltruhe-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--cream);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  margin-bottom: 8px;
+}
+.kuehltruhe-item.kuehltruhe-alt {
+  background: rgba(200,125,42,0.12);
+}
+.kuehltruhe-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.kuehltruhe-item-titel {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.kuehltruhe-item-alter {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.kuehltruhe-item.kuehltruhe-alt .kuehltruhe-item-alter {
+  color: var(--status-mid);
+}
+.kuehltruhe-entfernen-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.kuehltruhe-entfernen-btn:active { background: var(--green); color: #fff; }
 .kw-header-row {
   display: flex;
   align-items: center;
@@ -1152,6 +1198,11 @@ body.widget-mode .puffer-breakdown { display: none; }
         <button class="vorschlag-btn" id="vorschlagBtn">✨ Vorschläge erstellen</button>
       </div>
       <div id="essenWoche"></div>
+
+      <div class="card kuehltruhe-card">
+        <div class="card-label">🧊 Kühltruhe</div>
+        <div id="kuehltrucheListe"></div>
+      </div>
     </section>
 
     <!-- VIEW: EINKAUF -->
@@ -1803,8 +1854,8 @@ function renderEssenView() {
       return entries.map((entry, idx) => {
         const tagBadges = (entry.tags || []).map(t =>
           `<span class="essen-tag" style="margin-left:6px;">${t}</span>`).join('');
-        const gegessenBtn = (mt.key === 'Abend' && entry.poolId)
-          ? `<button class="gegessen-btn" data-pid="${entry.poolId}" title="Als gegessen markieren">✓</button>`
+        const gegessenBtn = (mt.key === 'Abend' && (entry.poolId || entry.kuehltrucheId))
+          ? `<button class="gegessen-btn" data-pid="${entry.poolId || ''}" data-ktid="${entry.kuehltrucheId || ''}" title="Als gegessen markieren">✓</button>`
           : '';
         const icon = idx === 0
           ? `<span class="essen-mahlzeit-icon">${mt.icon}</span>`
@@ -1835,10 +1886,16 @@ function renderEssenView() {
     });
   });
 
-  // "Als gegessen"-Buttons verdrahten
+  // "Als gegessen"-Buttons verdrahten -- markiert Pool-Gericht als gegessen
+  // UND entfernt einen ggf. verknüpften Kühltruhe-Eintrag (Reste sind dann weg).
   document.querySelectorAll('.gegessen-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      markAsEaten(btn.dataset.pid);
+      if (btn.dataset.pid) markAsEaten(btn.dataset.pid);
+      if (btn.dataset.ktid) {
+        const updated = LS.get('ff_kuehltruhe', []).filter(k => k.id !== btn.dataset.ktid);
+        LS.set('ff_kuehltruhe', updated);
+        renderKuehltruhe();
+      }
       btn.textContent = '✓✓';
       btn.style.color = 'var(--green)';
       btn.disabled = true;
@@ -1847,6 +1904,56 @@ function renderEssenView() {
   });
 
   // Modal schließen -- wird einmalig in init() verdrahtet, nicht hier
+
+  renderKuehltruhe();
+}
+
+// Zeigt die Kühltruhe-Einträge sortiert nach Alter (ältestes zuerst),
+// mit Tagen seit dem Einfrieren und Button zum manuellen Entfernen.
+function renderKuehltruhe() {
+  const wrap = document.getElementById('kuehltrucheListe');
+  if (!wrap) return;
+
+  const kuehltruhe = LS.get('ff_kuehltruhe', []);
+
+  if (!kuehltruhe.length) {
+    wrap.innerHTML = '<div class="empty-state">Nichts eingefroren.</div>';
+    return;
+  }
+
+  const sorted = [...kuehltruhe].sort((a, b) =>
+    new Date(a.eingefrorenAm) - new Date(b.eingefrorenAm)
+  );
+
+  const heute = new Date(today());
+
+  wrap.innerHTML = sorted.map(k => {
+    const eingefroren = new Date(k.eingefrorenAm);
+    const tageAlt = Math.round((heute - eingefroren) / (1000 * 60 * 60 * 24));
+    const altHint = tageAlt === 0 ? 'heute eingefroren' : `vor ${tageAlt} Tag${tageAlt === 1 ? '' : 'en'}`;
+    const warnung = tageAlt >= 14 ? ' kuehltruhe-alt' : '';
+    const tagBadges = (k.tags || []).map(t => `<span class="essen-tag">${t}</span>`).join('');
+
+    return `
+      <div class="kuehltruhe-item${warnung}" data-ktid="${k.id}">
+        <div class="kuehltruhe-item-info">
+          <span class="kuehltruhe-item-titel">${k.title}</span>
+          <span class="kuehltruhe-item-alter">${altHint}</span>
+          ${tagBadges}
+        </div>
+        <button class="kuehltruhe-entfernen-btn" data-ktid="${k.id}" title="Als aufgebraucht markieren">✓</button>
+      </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('.kuehltruhe-entfernen-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.ktid;
+      const updated = LS.get('ff_kuehltruhe', []).filter(k => k.id !== id);
+      LS.set('ff_kuehltruhe', updated);
+      showToast('Als aufgebraucht markiert ✓');
+      renderKuehltruhe();
+    });
+  });
 }
 
 // Aktueller Vorschlag zwischenspeichern, damit "Übernehmen" ihn kennt
@@ -1923,6 +2030,7 @@ function uebernehmeVorschlag() {
         title:  gericht.title,
         tags:   gericht.tags,
         poolId: gericht.poolId,
+        kuehltrucheId: gericht.kuehltrucheId || null,
         source: 'vorschlag',
       }];
     }
@@ -2835,6 +2943,13 @@ async function syncTrello() {
     existingPool.forEach(g => { poolMap[g.title] = g; });
     const newPool = [];
 
+    // Bestehende Kühltruhe laden – eingefrorenAm-Datum behalten für Karten,
+    // die schon bekannt sind; nur bei NEUEN Karten wird heute eingetragen.
+    const existingKuehltruhe = LS.get('ff_kuehltruhe', []);
+    const kuehltruheMap = {};
+    existingKuehltruhe.forEach(k => { kuehltruheMap[k.title] = k; });
+    const newKuehltruhe = [];
+
     lists.forEach(list => {
       // ── Pool: Hauptgerichte aus der Ideenliste ────────────────
       if (list.name === 'Hauptgerichte') {
@@ -2857,6 +2972,21 @@ async function syncTrello() {
             lastEaten: existing?.lastEaten || null,
             desc:      card.desc || '',
             zutaten,
+          });
+        });
+        return; // Wochentag-Verarbeitung überspringen
+      }
+
+      // ── Kühltruhe: eingefrorene Reste mit Einfrierdatum ───────
+      if (list.name === 'Kühltruhe') {
+        list.cards.forEach(card => {
+          const { tags } = parseCardLabels(card);
+          const existing = kuehltruheMap[card.name];
+          newKuehltruhe.push({
+            id:           existing?.id || 'kt_' + uid(),
+            title:        card.name,
+            tags,
+            eingefrorenAm: existing?.eingefrorenAm || today(), // nur bei NEUER Karte gesetzt
           });
         });
         return; // Wochentag-Verarbeitung überspringen
@@ -2897,6 +3027,7 @@ async function syncTrello() {
 
     save('essenWoche', essenWoche);
     if (newPool.length) LS.set('ff_gerichtPool', newPool);
+    LS.set('ff_kuehltruhe', newKuehltruhe); // auch leeres Array speichern (Liste kann leergeräumt worden sein)
 
     const behalten  = state.einkauf.filter(i => i.source !== 'rezept');
     const neueItems = einkaufNeu.map(i => ({
@@ -2942,6 +3073,23 @@ function sortedPool(pool, excludeTitles = []) {
 // Gibt true zurück wenn ein Gericht ein bestimmtes Label-Wort enthält
 function hasTag(gericht, tagWord) {
   return gericht.tags.some(t => t.toLowerCase().includes(tagWord.toLowerCase()));
+}
+
+// Mindestalter in Tagen, ab dem ein Kühltruhe-Eintrag im Vorschlag
+// bevorzugt wird (verhindert, dass Reste zu lange liegen bleiben).
+const KUEHLTRUHE_PRIORITAET_TAGE = 14;
+
+function getKuehltrucheAlsVorschlagKandidaten(usedTitles) {
+  const kuehltruhe = LS.get('ff_kuehltruhe', []);
+  const heute = new Date(today());
+  return kuehltruhe
+    .filter(k => !usedTitles.includes(k.title))
+    .map(k => ({
+      ...k,
+      tageAlt: Math.round((heute - new Date(k.eingefrorenAm)) / (1000 * 60 * 60 * 24)),
+    }))
+    .filter(k => k.tageAlt >= KUEHLTRUHE_PRIORITAET_TAGE)
+    .sort((a, b) => b.tageAlt - a.tageAlt); // ältestes zuerst
 }
 
 function buildWochenvorschlag() {
@@ -2991,7 +3139,20 @@ function buildWochenvorschlag() {
       return;
     }
 
-    // 3) Flexibler Tag: ältestes lastEaten, Low Carb leicht bevorzugt
+    // 3) Flexibler Tag: zuerst alte Kühltruhen-Reste (ab 14 Tagen),
+    //    sonst ältestes lastEaten aus dem Pool, Low Carb leicht bevorzugt
+    const kuehltrucheKandidat = getKuehltrucheAlsVorschlagKandidaten(used)[0];
+    if (kuehltrucheKandidat) {
+      vorschlag[day] = {
+        title: kuehltrucheKandidat.title,
+        tags: [...(kuehltrucheKandidat.tags || []), '🧊 Kühltruhe'],
+        poolId: null,
+        kuehltrucheId: kuehltrucheKandidat.id,
+      };
+      used.push(kuehltrucheKandidat.title);
+      return;
+    }
+
     const candidates = sortedPool(pool, used);
     const lowCarb    = candidates.filter(g => hasTag(g, 'low carb'));
     const pick       = (lowCarb[0] && Math.random() > 0.25) ? lowCarb[0] : candidates[0];
