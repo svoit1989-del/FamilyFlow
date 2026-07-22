@@ -367,6 +367,10 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   color: #fff;
   font-size: 0.7rem;
 }
+.aufgabe-check.virtuell {
+  border-color: var(--status-mid);
+  background: rgba(200,125,42,0.12);
+}
 .aufgabe-body { flex: 1; }
 .aufgabe-title {
   font-size: 0.95rem;
@@ -603,6 +607,18 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   gap: 6px;
   margin-bottom: 12px;
 }
+.gericht-detail-werkzeug {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--forest);
+  background: var(--cream);
+  border-radius: 99px;
+  padding: 5px 12px;
+  margin-bottom: 12px;
+}
 .gericht-detail-last {
   font-size: 0.82rem;
   color: var(--muted);
@@ -835,6 +851,35 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   white-space: nowrap;
 }
 .connect-btn:active { background: var(--green); }
+
+.brotvorrat-status { margin-bottom: 14px; }
+.brotvorrat-bestand {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--forest);
+}
+.brotvorrat-bestand.knapp { color: var(--status-mid); }
+.brotvorrat-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.brotvorrat-form {
+  display: flex;
+  gap: 10px;
+}
+.brotvorrat-input {
+  flex: 1;
+  border: 2px solid var(--cream-dim);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.brotvorrat-input:focus { border-color: var(--green); }
 
 .orte-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .ort-item {
@@ -1268,6 +1313,15 @@ body.widget-mode .puffer-breakdown { display: none; }
       </div>
 
       <div class="card">
+        <div class="card-label">🍞 Brotvorrat</div>
+        <div id="brotvorratStatus" class="brotvorrat-status"></div>
+        <div class="brotvorrat-form">
+          <input type="number" id="brotvorratInput" class="brotvorrat-input" placeholder="Scheiben, z.B. 90" min="0" />
+          <button class="connect-btn" id="brotBackenBtn">Frisch gebacken</button>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-label">Wartung</div>
         <p class="reset-hint">Entfernt die Beispiel-Termine und -Aufgaben aus der ersten Einrichtung. Echte Google-/Trello-Daten, deine Orte und Kapazitätseinstellungen bleiben erhalten.</p>
         <button class="reset-btn" id="resetTestdataBtn">Testdaten entfernen</button>
@@ -1426,6 +1480,7 @@ let state = {
   orte:         LS.get('ff_orte',         DEFAULTS.orte),
   einkauf:      LS.get('ff_einkauf',      DEFAULTS.einkauf),
   einkaufErledigt: LS.get('ff_einkaufErledigt', []),
+  brotvorrat:   LS.get('ff_brotvorrat', { bestand: null, letztGebacken: null }),
   hinweise:     LS.get('ff_hinweise',     DEFAULTS.hinweise),
   naechsteFahrt:LS.get('ff_fahrt',        DEFAULTS.naechsteFahrt),
   activeView:   'home',
@@ -1723,10 +1778,111 @@ function renderEssenHeute() {
   extras.innerHTML = badges.map(t => `<span class="essen-tag">${t}</span>`).join('');
 }
 
+// ── BROTVORRAT ────────────────────────────────────────────────
+// Berechnet den prognostizierten Brotverbrauch für die kommenden Tage aus
+// den geplanten Mahlzeiten (essenWoche) und dem Gericht-Pool (Zutaten).
+// Sucht in allen Zutaten nach "brot" im Namen mit Stückzahl-Einheit.
+const BROTVORRAT_VORLAUF_TAGE = 2;
+
+// Ermittelt den Brotverbrauch (in Scheiben) für einen einzelnen Tag,
+// basierend auf allen geplanten Mahlzeiten (essenWoche) an diesem Wochentag.
+function getBrotVerbrauchFuerTag(dayName_) {
+  const pool = LS.get('ff_gerichtPool', []);
+  const poolByTitle = {};
+  pool.forEach(g => { poolByTitle[g.title] = g; });
+
+  const tagPlan = state.essenWoche[dayName_] || {};
+  let brotScheiben = 0;
+
+  ['Frühstück', 'Mittag', 'Abend'].forEach(slot => {
+    const entries = Array.isArray(tagPlan[slot]) ? tagPlan[slot] : (tagPlan[slot] ? [tagPlan[slot]] : []);
+    entries.forEach(entry => {
+      const poolEintrag = entry.poolId ? pool.find(g => g.id === entry.poolId) : poolByTitle[entry.title];
+      if (!poolEintrag || !poolEintrag.zutaten) return;
+      poolEintrag.zutaten.forEach(z => {
+        if (z.title.toLowerCase().includes('brot') && z.menge !== null) {
+          brotScheiben += z.menge;
+        }
+      });
+    });
+  });
+
+  return brotScheiben;
+}
+
+// Summiert den prognostizierten Brotverbrauch für die kommenden
+// BROTVORRAT_VORLAUF_TAGE+1 Tage (heute + Vorlauf).
+function getBrotVerbrauchProTag() {
+  const days  = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  const heute = new Date(today());
+  const verbrauchProTag = {};
+
+  for (let i = 0; i <= BROTVORRAT_VORLAUF_TAGE; i++) {
+    const dt = new Date(heute);
+    dt.setDate(heute.getDate() + i);
+    const dateStr   = toLocalDateStr(dt);
+    const dayIndex  = (dt.getDay() + 6) % 7; // Mo=0..So=6
+    verbrauchProTag[dateStr] = getBrotVerbrauchFuerTag(days[dayIndex]);
+  }
+
+  return verbrauchProTag;
+}
+
+// Prüft ob der Brotvorrat für den eingestellten Vorlauf noch reicht.
+// Zieht zuerst den Verbrauch SEIT dem letzten Backen vom eingetragenen
+// Bestand ab (rückwirkend), rechnet dann den Vorlauf-Verbrauch dagegen.
+// Gibt null zurück wenn kein Bestand hinterlegt ist (Feature ungenutzt).
+function checkBrotvorratKnapp() {
+  const vorrat = state.brotvorrat;
+  if (vorrat.bestand === null) return null;
+
+  const days = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  let bestandJetzt = vorrat.bestand;
+
+  // Rückwirkender Verbrauch: von "letztGebacken" (exklusiv) bis gestern (inklusiv)
+  if (vorrat.letztGebacken) {
+    const start = new Date(vorrat.letztGebacken);
+    const gestern = new Date(today());
+    gestern.setDate(gestern.getDate() - 1);
+
+    for (let dt = new Date(start); dt <= gestern; dt.setDate(dt.getDate() + 1)) {
+      if (toLocalDateStr(dt) === vorrat.letztGebacken) continue; // Backtag selbst zählt nicht als Verbrauchstag
+      const dayIndex = (dt.getDay() + 6) % 7;
+      bestandJetzt -= getBrotVerbrauchFuerTag(days[dayIndex]);
+    }
+  }
+
+  const verbrauch = getBrotVerbrauchProTag();
+  const gesamtVerbrauchVorlauf = Object.values(verbrauch).reduce((s, v) => s + v, 0);
+  const verbleibend = bestandJetzt - gesamtVerbrauchVorlauf;
+
+  return {
+    bestandJetzt: Math.round(bestandJetzt),
+    verbrauchVorlauf: gesamtVerbrauchVorlauf,
+    verbleibend,
+    istKnapp: verbleibend < 0 || (gesamtVerbrauchVorlauf > 0 && verbleibend < gesamtVerbrauchVorlauf * 0.15),
+  };
+}
+
 function renderAufgaben() {
   const list = document.getElementById('aufgabenList');
   const todayStr = today();
-  const heutigeAufgaben = state.aufgaben.filter(a => a.date === todayStr);
+  const heutigeAufgaben = [...state.aufgaben.filter(a => a.date === todayStr)];
+
+  // Virtuelle Aufgabe "Brot backen" einfügen, falls Vorrat knapp wird.
+  // Wird NICHT in state.aufgaben gespeichert -- ist reine Anzeige-Logik,
+  // die sich jedes Mal aus dem aktuellen Vorrat + Wochenplan neu ergibt.
+  const brotStatus = checkBrotvorratKnapp();
+  if (brotStatus && brotStatus.istKnapp) {
+    heutigeAufgaben.unshift({
+      id: 'brot-backen-virtuell',
+      title: '🍞 Brot backen',
+      duration: 0,
+      done: false,
+      virtuell: true,
+      subtitle: `Vorrat reicht noch für ~${Math.max(0, Math.round(brotStatus.verbleibend))} Scheiben`,
+    });
+  }
 
   if (!heutigeAufgaben.length) {
     list.innerHTML = '<li class="empty-state">Tag erledigt 🎉</li>';
@@ -1735,16 +1891,17 @@ function renderAufgaben() {
 
   list.innerHTML = heutigeAufgaben.map(a => `
     <li class="aufgabe-item">
-      <div class="aufgabe-check ${a.done ? 'done' : ''}" data-id="${a.id}">
+      <div class="aufgabe-check ${a.done ? 'done' : ''} ${a.virtuell ? 'virtuell' : ''}" data-id="${a.id}">
         ${a.done ? '✓' : ''}
       </div>
       <div class="aufgabe-body">
         <div class="aufgabe-title ${a.done ? 'done' : ''}">${a.title}</div>
+        ${a.subtitle ? `<div class="aufgabe-dur">${a.subtitle}</div>` : ''}
         ${a.duration ? `<div class="aufgabe-dur">${fmt(a.duration)}</div>` : ''}
       </div>
     </li>`).join('');
 
-  list.querySelectorAll('.aufgabe-check').forEach(el => {
+  list.querySelectorAll('.aufgabe-check:not(.virtuell)').forEach(el => {
     el.addEventListener('click', () => {
       const id = el.dataset.id;
       const aufg = state.aufgaben.map(a => a.id === id ? { ...a, done: !a.done } : a);
@@ -1753,6 +1910,15 @@ function renderAufgaben() {
       renderPuffer();
     });
   });
+
+  // Klick auf die virtuelle Brot-Aufgabe springt direkt zur Eintragefunktion
+  const brotCheck = list.querySelector('.aufgabe-check.virtuell');
+  if (brotCheck) {
+    brotCheck.addEventListener('click', () => {
+      switchView('familie');
+      setTimeout(() => document.getElementById('brotBackenBtn')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    });
+  }
 }
 
 function renderHinweise() {
@@ -2198,6 +2364,41 @@ function renderFamilie() {
   document.getElementById('stateDebugBtn').onclick = debugStoredEssenWoche;
   document.getElementById('tasksDebugBtn').onclick = debugGoogleTasks;
   document.getElementById('calDebugBtn').onclick = debugGoogleCalendar;
+
+  renderBrotvorrat();
+}
+
+// Zeigt den aktuellen Brotvorrat-Status und verdrahtet den
+// "Frisch gebacken"-Button. Trägt bei Klick den eingegebenen Wert
+// (oder 90 als Default) als neuen Bestand ein, Datum = heute.
+function renderBrotvorrat() {
+  const statusEl = document.getElementById('brotvorratStatus');
+  const vorrat = state.brotvorrat;
+
+  if (vorrat.bestand === null) {
+    statusEl.innerHTML = '<span class="brotvorrat-hint">Noch kein Vorrat hinterlegt.</span>';
+  } else {
+    const brotStatus = checkBrotvorratKnapp();
+    const datumStr = vorrat.letztGebacken
+      ? new Date(vorrat.letztGebacken).toLocaleDateString('de-DE', { day: 'numeric', month: 'long' })
+      : '–';
+    statusEl.innerHTML = `
+      <div class="brotvorrat-bestand${brotStatus?.istKnapp ? ' knapp' : ''}">
+        ~${brotStatus.bestandJetzt} Scheiben ${brotStatus?.istKnapp ? '⚠️ wird knapp' : '✓'}
+      </div>
+      <div class="brotvorrat-hint">Gebacken: ${vorrat.bestand} Scheiben am ${datumStr}</div>
+    `;
+  }
+
+  document.getElementById('brotBackenBtn').onclick = () => {
+    const input = document.getElementById('brotvorratInput');
+    const wert = parseInt(input.value, 10) || 90; // 90 als sinnvoller Default (2 Brote)
+    save('brotvorrat', { bestand: wert, letztGebacken: today() });
+    input.value = '';
+    renderBrotvorrat();
+    refreshAllViews();
+    showToast(`Brotvorrat auf ${wert} Scheiben gesetzt ✓`);
+  };
 }
 
 // Diagnose: zeigt die rohe Google-Tasks-API-Antwort -- sowohl die Liste
@@ -2519,6 +2720,11 @@ function openGerichtAuswahl(day, slot, idx) {
     ? `Zuletzt gegessen: ${new Date(poolEintrag.lastEaten).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}`
     : 'Noch nie als gegessen markiert';
 
+  const WERKZEUG_ICONS = { backblech: '🍞', pfanne: '🍳', topf: '🍲', auflaufform: '🥘' };
+  const werkzeugHint = poolEintrag.werkzeug
+    ? `<div class="gericht-detail-werkzeug">${WERKZEUG_ICONS[poolEintrag.werkzeug] || '🔧'} ${poolEintrag.werkzeug.charAt(0).toUpperCase() + poolEintrag.werkzeug.slice(1)}</div>`
+    : '';
+
   const zutatenListe = (poolEintrag.zutaten || []).length
     ? poolEintrag.zutaten.map(z => {
         const mengeStr = z.menge !== null && z.einheit
@@ -2530,6 +2736,7 @@ function openGerichtAuswahl(day, slot, idx) {
 
   wrap.innerHTML = `
     ${tagBadges ? `<div class="gericht-detail-tags">${tagBadges}</div>` : ''}
+    ${werkzeugHint}
     <div class="gericht-detail-last">${lastHint}</div>
     <div class="gericht-detail-zutaten-label">Zutaten</div>
     <div class="gericht-detail-zutaten">${zutatenListe}</div>
@@ -2914,6 +3121,36 @@ function isUrlLine(line) {
   return false;
 }
 
+// Bekannte Werkzeug-Wörter. Eine Zeile in der Kartenbeschreibung, die EXAKT
+// (Groß-/Kleinschreibung egal) einem dieser Wörter entspricht, wird als
+// Kochwerkzeug erkannt statt als Zutat -- landet also nicht in der
+// Einkaufsliste, sondern im Pool-Feld "werkzeug".
+const WERKZEUG_WOERTER = ['backblech', 'pfanne', 'topf', 'auflaufform'];
+
+function matchWerkzeugZeile(line) {
+  const clean = line.replace(/^[-*•]\s*/, '').trim().toLowerCase();
+  return WERKZEUG_WOERTER.includes(clean) ? clean : null;
+}
+
+// Extrahiert Werkzeug UND Zutaten in einem Durchgang, damit Werkzeug-Zeilen
+// nicht versehentlich als Zutat durchrutschen.
+function parseKartenbeschreibung(desc) {
+  if (!desc) return { werkzeug: null, zutaten: [] };
+
+  let werkzeug = null;
+  const zutaten = [];
+
+  desc.split('\n').forEach(line => {
+    if (isUrlLine(line)) return;
+    const wz = matchWerkzeugZeile(line);
+    if (wz) { werkzeug = wz; return; }
+    const z = parseZutat(line);
+    if (z && z.title) zutaten.push(z);
+  });
+
+  return { werkzeug, zutaten };
+}
+
 function parseCardLabels(card) {
   const names = (card.labels || []).map(l => l.name).filter(Boolean);
   let mealTime = null;
@@ -2957,13 +3194,8 @@ async function syncTrello() {
           const { tags } = parseCardLabels(card);
           const existing = poolMap[card.name];
 
-          // Zutaten aus der Beschreibung geparst für die Detailansicht
-          const zutaten = card.desc
-            ? card.desc.split('\n')
-                .filter(line => !isUrlLine(line))
-                .map(line => parseZutat(line))
-                .filter(z => z && z.title)
-            : [];
+          // Zutaten UND Werkzeug aus der Beschreibung in einem Durchgang parsen
+          const { werkzeug, zutaten } = parseKartenbeschreibung(card.desc);
 
           newPool.push({
             id:        existing?.id || 'gp_' + uid(),
@@ -2972,6 +3204,7 @@ async function syncTrello() {
             lastEaten: existing?.lastEaten || null,
             desc:      card.desc || '',
             zutaten,
+            werkzeug,                          // "backblech" | "pfanne" | "topf" | "auflaufform" | null
           });
         });
         return; // Wochentag-Verarbeitung überspringen
@@ -3098,6 +3331,10 @@ function buildWochenvorschlag() {
   const days      = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
   const vorschlag = {};
   const used      = [];
+  let letztesWerkzeug = null; // Werkzeug des zuletzt vorgeschlagenen Gerichts
+
+  const poolById = {};
+  pool.forEach(g => { poolById[g.id] = g; });
 
   days.forEach(day => {
     const regel = regeln[day];
@@ -3109,8 +3346,10 @@ function buildWochenvorschlag() {
       if (match) {
         vorschlag[day] = { title: match.title, tags: match.tags, poolId: match.id };
         used.push(match.title);
+        letztesWerkzeug = match.werkzeug || null;
       } else {
         vorschlag[day] = { title: regel.fixText || regel.fixLabel, tags: [], poolId: null };
+        letztesWerkzeug = null;
       }
       return;
     }
@@ -3133,14 +3372,18 @@ function buildWochenvorschlag() {
       if (pick) {
         vorschlag[day] = { title: pick.title, tags: pick.tags, poolId: pick.id };
         used.push(pick.title);
+        letztesWerkzeug = pick.werkzeug || null;
       } else {
         vorschlag[day] = null;
+        letztesWerkzeug = null;
       }
       return;
     }
 
     // 3) Flexibler Tag: zuerst alte Kühltruhen-Reste (ab 14 Tagen),
-    //    sonst ältestes lastEaten aus dem Pool, Low Carb leicht bevorzugt
+    //    sonst ältestes lastEaten aus dem Pool, Low Carb leicht bevorzugt,
+    //    UND: gleiches Kochwerkzeug wie am Vortag leicht bevorzugt
+    //    (z.B. Backblech zwei Tage hintereinander -- spart Abwasch).
     const kuehltrucheKandidat = getKuehltrucheAlsVorschlagKandidaten(used)[0];
     if (kuehltrucheKandidat) {
       vorschlag[day] = {
@@ -3150,17 +3393,34 @@ function buildWochenvorschlag() {
         kuehltrucheId: kuehltrucheKandidat.id,
       };
       used.push(kuehltrucheKandidat.title);
+      letztesWerkzeug = null; // Kühltruhen-Reste haben kein eigenes Werkzeug im Pool
       return;
     }
 
-    const candidates = sortedPool(pool, used);
-    const lowCarb    = candidates.filter(g => hasTag(g, 'low carb'));
-    const pick       = (lowCarb[0] && Math.random() > 0.25) ? lowCarb[0] : candidates[0];
+    let candidates = sortedPool(pool, used);
+    const lowCarb  = candidates.filter(g => hasTag(g, 'low carb'));
+    let basisAuswahl = candidates;
+    if (lowCarb.length && Math.random() > 0.25) basisAuswahl = lowCarb;
+
+    // Werkzeug-Präferenz: unter den obersten (ältestes-zuerst) Kandidaten
+    // dasjenige mit gleichem Werkzeug wie gestern bevorzugen, aber nur
+    // wenn es nicht deutlich "frischer gegessen" ist als die Alternative
+    // (wir schauen nur unter den ersten paar Kandidaten, damit "gleiches
+    // Werkzeug" nicht wichtiger wird als "lange nicht gegessen").
+    let pick = basisAuswahl[0];
+    if (letztesWerkzeug) {
+      const kandidatenFenster = basisAuswahl.slice(0, 5); // Top-5 nach Alter
+      const gleichesWerkzeug = kandidatenFenster.find(g => g.werkzeug === letztesWerkzeug);
+      if (gleichesWerkzeug) pick = gleichesWerkzeug;
+    }
+
     if (pick) {
       vorschlag[day] = { title: pick.title, tags: pick.tags, poolId: pick.id };
       used.push(pick.title);
+      letztesWerkzeug = pick.werkzeug || null;
     } else {
       vorschlag[day] = null;
+      letztesWerkzeug = null;
     }
   });
 
