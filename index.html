@@ -493,6 +493,93 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   transition: background 0.15s, color 0.15s;
 }
 .kuehltruhe-entfernen-btn:active { background: var(--green); color: #fff; }
+
+/* ===== VORRAT VIEW ===== */
+.vorrat-lagerort-block {
+  margin-bottom: 24px;
+}
+.vorrat-lagerort-header {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--forest);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--cream-dim);
+}
+.vorrat-kategorie {
+  margin-bottom: 14px;
+}
+.vorrat-kat-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.vorrat-item {
+  background: #fff;
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  box-shadow: var(--shadow);
+  margin-bottom: 10px;
+}
+.vorrat-item-warnung {
+  border-left: 3px solid var(--status-mid);
+}
+.vorrat-item-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.vorrat-item-titel {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.vorrat-mhd-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--cream);
+  border-radius: 99px;
+  padding: 3px 10px;
+}
+.vorrat-mhd-badge.kritisch {
+  color: #fff;
+  background: var(--status-mid);
+}
+.vorrat-mhd-badge.abgelaufen {
+  color: #fff;
+  background: var(--status-red);
+}
+.vorrat-item-menge-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.vorrat-menge-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--cream);
+  color: var(--forest);
+  font-size: 1.2rem;
+  font-weight: 700;
+  transition: background 0.15s;
+}
+.vorrat-menge-btn:active { background: var(--green); color: #fff; }
+.vorrat-menge-anzeige {
+  flex: 1;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--forest);
+  font-variant-numeric: tabular-nums;
+}
 .kw-header-row {
   display: flex;
   align-items: center;
@@ -985,17 +1072,17 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 6px 10px;
+  padding: 6px 6px;
   border-radius: 12px;
   transition: background 0.15s;
-  min-width: 52px;
+  min-width: 44px;
 }
 .nav-btn:active { background: var(--cream); }
-.nav-icon { font-size: 1.3rem; line-height: 1; }
+.nav-icon { font-size: 1.2rem; line-height: 1; }
 .nav-label {
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   color: var(--muted);
   transition: color 0.15s;
 }
@@ -1344,6 +1431,12 @@ body.widget-mode .puffer-breakdown { display: none; }
       </div>
     </section>
 
+    <!-- VIEW: VORRAT -->
+    <section class="view" id="view-vorrat">
+      <div class="view-header">Vorrat</div>
+      <div id="vorratListe"></div>
+    </section>
+
     <!-- TRELLO SETUP MODAL -->
     <div class="modal-overlay" id="trelloModal">
       <div class="modal-box">
@@ -1352,6 +1445,8 @@ body.widget-mode .puffer-breakdown { display: none; }
         <input class="modal-input" id="trelloApiKeyInput" placeholder="API Key" />
         <input class="modal-input" id="trelloTokenInput" placeholder="Token" />
         <input class="modal-input" id="trelloBoardInput" placeholder="Board-ID oder Trello-Link" />
+        <p class="modal-hint" style="margin-top:2px;">Optional: separates Board für den Vorrat (leer lassen, falls Vorrat im selben Board liegt).</p>
+        <input class="modal-input" id="trelloVorratBoardInput" placeholder="Vorrat-Board-ID oder Link (optional)" />
         <div class="modal-actions">
           <button class="modal-btn secondary" id="trelloModalCancel">Abbrechen</button>
           <button class="modal-btn primary" id="trelloModalSave">Speichern &amp; Sync</button>
@@ -1406,6 +1501,10 @@ body.widget-mode .puffer-breakdown { display: none; }
     <button class="nav-btn" data-view="familie">
       <span class="nav-icon">👨‍👩‍👧‍👦</span>
       <span class="nav-label">Familie</span>
+    </button>
+    <button class="nav-btn" data-view="vorrat">
+      <span class="nav-icon">📦</span>
+      <span class="nav-label">Vorrat</span>
     </button>
   </nav>
 
@@ -1659,6 +1758,60 @@ function parseZutat(line) {
 
   // Keine Zahl am Anfang: kein Mengenformat erkennbar
   return { title: clean, menge: null, einheit: null, raw: clean };
+}
+
+// Erkennt eine MHD-Zeile im Format "MHD: 15.08.2026" und gibt das Datum
+// als "YYYY-MM-DD" zurück (intern konsistentes Format wie überall sonst
+// in der App). Gibt null zurück wenn die Zeile kein MHD enthält.
+function parseMHDZeile(line) {
+  const m = line.trim().match(/^MHD:?\s*(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/i);
+  if (!m) return null;
+  const [, tag, monat, jahrRaw] = m;
+  const jahr = jahrRaw.length === 2 ? '20' + jahrRaw : jahrRaw;
+  const dd = tag.padStart(2, '0');
+  const mm = monat.padStart(2, '0');
+  return `${jahr}-${mm}-${dd}`;
+}
+
+// Parst eine Vorrats-Kartenbeschreibung: eine Zeile ist das MHD
+// ("MHD: 15.08.2026"), alle anderen Zeilen werden als Mengenangabe
+// interpretiert (üblicherweise nur eine Zeile, z.B. "1000g").
+// Parst eine reine Mengenzeile OHNE Produktname (der Produktname steht ja
+// schon im Kartentitel) -- Format: "1000g", "1000 g", "5 St", "3".
+function parseReinemenge(line) {
+  const clean = line.trim();
+  const mitEinheit = clean.match(/^(\d+[.,]?\d*)\s*([a-zäöü]+)\.?$/i);
+  if (mitEinheit) {
+    const einheitWort = mitEinheit[2].toLowerCase().replace('.', '');
+    if (EINHEITEN.includes(einheitWort)) {
+      return { menge: parseFloat(mitEinheit[1].replace(',', '.')), einheit: einheitWort };
+    }
+  }
+  const nurZahl = clean.match(/^(\d+[.,]?\d*)$/);
+  if (nurZahl) {
+    return { menge: parseFloat(nurZahl[1].replace(',', '.')), einheit: 'st' };
+  }
+  return null;
+}
+
+function parseVorratsBeschreibung(desc) {
+  if (!desc) return { mhd: null, menge: null, einheit: null };
+
+  let mhd = null;
+  let menge = null;
+  let einheit = null;
+
+  desc.split('\n').forEach(line => {
+    if (!line.trim()) return;
+    const mhdParsed = parseMHDZeile(line);
+    if (mhdParsed) { mhd = mhdParsed; return; }
+    if (menge === null) {
+      const geparst = parseReinemenge(line);
+      if (geparst) { menge = geparst.menge; einheit = geparst.einheit; }
+    }
+  });
+
+  return { mhd, menge, einheit };
 }
 
 // ── RENDER FUNCTIONS ──────────────────────────────────────────
@@ -1923,8 +2076,21 @@ function renderAufgaben() {
 
 function renderHinweise() {
   const list = document.getElementById('hinweiseList');
-  list.innerHTML = state.hinweise.map(h => `
-    <li class="hinweis-item">${h.text}</li>`).join('');
+  const manuelleHinweise = state.hinweise.map(h => h.text);
+
+  // Kritische/abgelaufene Vorräte automatisch als Hinweis einblenden
+  const vorratHinweise = getVorratMitStatus()
+    .filter(v => v.istKritisch || v.istAbgelaufen)
+    .map(v => v.istAbgelaufen
+      ? `📦 ${v.title} – MHD abgelaufen`
+      : `📦 ${v.title} – noch ${v.tageBisMHD} Tag${v.tageBisMHD === 1 ? '' : 'e'} haltbar`
+    );
+
+  const alle = [...vorratHinweise, ...manuelleHinweise];
+
+  list.innerHTML = alle.length
+    ? alle.map(text => `<li class="hinweis-item">${text}</li>`).join('')
+    : '<li class="empty-state">Keine Hinweise.</li>';
 }
 
 function renderHome() {
@@ -2052,11 +2218,19 @@ function renderEssenView() {
     });
   });
 
-  // "Als gegessen"-Buttons verdrahten -- markiert Pool-Gericht als gegessen
-  // UND entfernt einen ggf. verknüpften Kühltruhe-Eintrag (Reste sind dann weg).
+  // "Als gegessen"-Buttons verdrahten -- markiert Pool-Gericht als gegessen,
+  // entfernt einen ggf. verknüpften Kühltruhe-Eintrag (Reste sind dann weg),
+  // UND zieht die verwendeten Zutaten vom Vorrat ab (falls dort vorhanden).
   document.querySelectorAll('.gegessen-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (btn.dataset.pid) markAsEaten(btn.dataset.pid);
+      if (btn.dataset.pid) {
+        markAsEaten(btn.dataset.pid);
+        const pool = LS.get('ff_gerichtPool', []);
+        const gericht = pool.find(g => g.id === btn.dataset.pid);
+        if (gericht?.zutaten) {
+          gericht.zutaten.forEach(z => verbraucheAusVorrat(z.title, z.menge, z.einheit));
+        }
+      }
       if (btn.dataset.ktid) {
         const updated = LS.get('ff_kuehltruhe', []).filter(k => k.id !== btn.dataset.ktid);
         LS.set('ff_kuehltruhe', updated);
@@ -2331,6 +2505,120 @@ function setupEinkauf() {
 }
 
 // ── FAMILIE VIEW ──────────────────────────────────────────────
+// ── VORRAT VIEW ───────────────────────────────────────────────
+const VORRAT_MHD_WARNUNG_TAGE = 3;
+
+function getVorratMitStatus() {
+  const vorrat = LS.get('ff_vorrat', []);
+  const heute = new Date(today());
+
+  return vorrat.map(v => {
+    let tageBisMHD = null;
+    let istKritisch = false;
+    let istAbgelaufen = false;
+
+    if (v.mhd) {
+      const mhdDate = new Date(v.mhd);
+      tageBisMHD = Math.round((mhdDate - heute) / (1000 * 60 * 60 * 24));
+      istAbgelaufen = tageBisMHD < 0;
+      istKritisch = tageBisMHD >= 0 && tageBisMHD <= VORRAT_MHD_WARNUNG_TAGE;
+    }
+
+    return { ...v, tageBisMHD, istKritisch, istAbgelaufen };
+  }).sort((a, b) => {
+    // Kein MHD ans Ende, sonst nach verbleibenden Tagen aufsteigend (knappstes zuerst)
+    if (a.mhd === null && b.mhd === null) return a.title.localeCompare(b.title);
+    if (a.mhd === null) return 1;
+    if (b.mhd === null) return -1;
+    return a.tageBisMHD - b.tageBisMHD;
+  });
+}
+
+function renderVorrat() {
+  const wrap = document.getElementById('vorratListe');
+  const vorrat = getVorratMitStatus();
+
+  if (!vorrat.length) {
+    wrap.innerHTML = '<div class="empty-state">Noch kein Vorrat hinterlegt. Lege in Trello die Listen "Keller" und/oder "Kühlschrank" an.</div>';
+    return;
+  }
+
+  // Gruppierung: erst Lagerort (feste Reihenfolge), dann Kategorie
+  // (gleiche Kategorie-Logik wie die Einkaufsliste, für Konsistenz).
+  const nachOrt = {};
+  vorrat.forEach(v => {
+    const ort = v.lagerort || 'Sonstiger Lagerort';
+    if (!nachOrt[ort]) nachOrt[ort] = {};
+    const kat = resolveKat(guessKategorie(v.title));
+    if (!nachOrt[ort][kat]) nachOrt[ort][kat] = [];
+    nachOrt[ort][kat].push(v);
+  });
+
+  const ortReihenfolge = [...VORRAT_LAGERORTE, 'Sonstiger Lagerort'].filter(o => nachOrt[o]);
+  const ORT_ICONS = { Keller: '🧺', Kühlschrank: '🧊' };
+
+  wrap.innerHTML = ortReihenfolge.map(ort => {
+    const katGruppen = KAT_ORDER.filter(k => nachOrt[ort][k]);
+    const itemsHtml = katGruppen.map(kat => `
+      <div class="vorrat-kategorie">
+        <div class="vorrat-kat-header">${kat}</div>
+        ${nachOrt[ort][kat].map(v => renderVorratItem(v)).join('')}
+      </div>
+    `).join('');
+
+    return `
+      <div class="vorrat-lagerort-block">
+        <div class="vorrat-lagerort-header">${ORT_ICONS[ort] || '📦'} ${ort}</div>
+        ${itemsHtml}
+      </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('.vorrat-menge-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.vid;
+      const delta = parseInt(btn.dataset.delta, 10);
+      const vorrat = LS.get('ff_vorrat', []);
+      const updated = vorrat.map(v => {
+        if (v.id !== id) return v;
+        if (v.menge === null) return v; // keine Menge bekannt -> nichts zu ändern
+        const neueMenge = Math.max(0, v.menge + delta);
+        return { ...v, menge: neueMenge };
+      });
+      LS.set('ff_vorrat', updated);
+      renderVorrat();
+    });
+  });
+}
+
+function renderVorratItem(v) {
+  const mengeStr = v.menge !== null && v.einheit
+    ? `${v.menge}${v.einheit === 'st' ? ' St' : v.einheit}`
+    : '–';
+
+  let mhdBadge = '';
+  if (v.istAbgelaufen) {
+    mhdBadge = `<span class="vorrat-mhd-badge abgelaufen">MHD abgelaufen</span>`;
+  } else if (v.istKritisch) {
+    mhdBadge = `<span class="vorrat-mhd-badge kritisch">noch ${v.tageBisMHD} Tag${v.tageBisMHD === 1 ? '' : 'e'}</span>`;
+  } else if (v.mhd) {
+    const mhdLabel = new Date(v.mhd).toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
+    mhdBadge = `<span class="vorrat-mhd-badge">MHD ${mhdLabel}</span>`;
+  }
+
+  return `
+    <div class="vorrat-item ${v.istKritisch || v.istAbgelaufen ? 'vorrat-item-warnung' : ''}" data-vid="${v.id}">
+      <div class="vorrat-item-kopf">
+        <span class="vorrat-item-titel">${v.title}</span>
+        ${mhdBadge}
+      </div>
+      <div class="vorrat-item-menge-row">
+        <button class="vorrat-menge-btn" data-vid="${v.id}" data-delta="-1">−</button>
+        <span class="vorrat-menge-anzeige">${mengeStr}</span>
+        <button class="vorrat-menge-btn" data-vid="${v.id}" data-delta="1">+</button>
+      </div>
+    </div>`;
+}
+
 function renderFamilie() {
   renderConnections();
 
@@ -2659,6 +2947,7 @@ function openTrelloModal() {
   document.getElementById('trelloApiKeyInput').value = creds?.apiKey || '';
   document.getElementById('trelloTokenInput').value  = creds?.token || '';
   document.getElementById('trelloBoardInput').value  = creds?.boardId || '';
+  document.getElementById('trelloVorratBoardInput').value = creds?.vorratBoardId || '';
   document.getElementById('trelloModal').classList.add('open');
 }
 function closeTrelloModal() {
@@ -2752,6 +3041,7 @@ function setupTrelloModal() {
     const apiKey = document.getElementById('trelloApiKeyInput').value.trim();
     const token  = document.getElementById('trelloTokenInput').value.trim();
     let boardRaw = document.getElementById('trelloBoardInput').value.trim();
+    let vorratBoardRaw = document.getElementById('trelloVorratBoardInput').value.trim();
 
     if (!apiKey || !token || !boardRaw) {
       showToast('Bitte alle Felder ausfüllen.');
@@ -2762,7 +3052,13 @@ function setupTrelloModal() {
     const match = boardRaw.match(/trello\.com\/b\/([a-zA-Z0-9]+)/);
     const boardId = match ? match[1] : boardRaw;
 
-    saveTrelloCreds({ apiKey, token, boardId });
+    let vorratBoardId = null;
+    if (vorratBoardRaw) {
+      const vorratMatch = vorratBoardRaw.match(/trello\.com\/b\/([a-zA-Z0-9]+)/);
+      vorratBoardId = vorratMatch ? vorratMatch[1] : vorratBoardRaw;
+    }
+
+    saveTrelloCreds({ apiKey, token, boardId, vorratBoardId });
     closeTrelloModal();
     showToast('Verbinde mit Trello…');
     await syncTrello();
@@ -2811,6 +3107,7 @@ function switchView(view) {
   if (view === 'essen')    renderEssenView();
   if (view === 'einkauf')  renderEinkauf();
   if (view === 'familie')  renderFamilie();
+  if (view === 'vorrat')   renderVorrat();
   if (view === 'home')     renderHome();
 
   window.scrollTo(0, 0);
@@ -2826,6 +3123,7 @@ function refreshAllViews() {
     case 'essen':    renderEssenView(); break;
     case 'einkauf':  renderEinkauf(); break;
     case 'familie':  renderFamilie(); break;
+    case 'vorrat':   renderVorrat(); break;
   }
 }
 
@@ -2891,7 +3189,7 @@ const GOOGLE_SCOPES = [
 
 // Trello-Keys NIE hardcoden – kommen vom Nutzer, landen nur in LocalStorage.
 function getTrelloCreds() {
-  return LS.get('ff_trello_creds', null); // { apiKey, token, boardId }
+  return LS.get('ff_trello_creds', null); // { apiKey, token, boardId, vorratBoardId }
 }
 function saveTrelloCreds(creds) {
   LS.set('ff_trello_creds', creds);
@@ -3163,6 +3461,84 @@ function parseCardLabels(card) {
   return { mealTime, tags };
 }
 
+// Synchronisiert die Vorrat-Liste -- entweder aus dem Haupt-Board (falls
+// keine separate vorratBoardId gesetzt ist) oder aus einem eigenen Board.
+// Eigenständig aufrufbar, damit sie unabhängig vom Haupt-Sync läuft.
+// Lagerort-Listen, die als Vorrat verarbeitet werden. Jede Karte darin
+// bekommt automatisch den Listennamen als "lagerort" zugewiesen.
+const VORRAT_LAGERORTE = ['Keller', 'Kühlschrank'];
+
+function parseVorratsListe(list, existingVorrat) {
+  const vorratMap = {};
+  existingVorrat.forEach(v => { vorratMap[v.title + '|' + v.lagerort] = v; });
+
+  return list.cards.map(card => {
+    const key = card.name + '|' + list.name;
+    const existing = vorratMap[key];
+    const { mhd, menge, einheit } = parseVorratsBeschreibung(card.desc);
+    return {
+      id:       existing?.id || 'vr_' + uid(),
+      title:    card.name,
+      lagerort: list.name, // "Keller" | "Kühlschrank"
+      mhd,                                              // immer aktuell aus Trello
+      menge:    existing ? existing.menge : menge,       // lokale Anpassung bleibt
+      einheit:  existing ? existing.einheit : einheit,
+    };
+  });
+}
+
+async function syncVorratBoard() {
+  const creds = getTrelloCreds();
+  if (!creds) return;
+
+  const boardIdFuerVorrat = creds.vorratBoardId || creds.boardId;
+  if (!boardIdFuerVorrat) return;
+
+  try {
+    const lists = await trelloFetch(`/boards/${boardIdFuerVorrat}/lists?cards=open&card_fields=name,desc,labels`);
+    const existingVorrat = LS.get('ff_vorrat', []);
+
+    const newVorrat = [];
+    VORRAT_LAGERORTE.forEach(ort => {
+      const liste = lists.find(l => l.name === ort);
+      if (liste) newVorrat.push(...parseVorratsListe(liste, existingVorrat));
+    });
+
+    // Nur überschreiben wenn wenigstens eine der Lagerort-Listen gefunden wurde
+    if (lists.some(l => VORRAT_LAGERORTE.includes(l.name))) {
+      LS.set('ff_vorrat', newVorrat);
+    }
+  } catch (err) {
+    console.error('Vorrat-Sync Fehler:', err);
+    showToast('Vorrat-Sync fehlgeschlagen. Vorrat-Board-ID prüfen.');
+  }
+}
+
+// Prüft für eine Zutat, ob genug davon im Vorrat liegt. Gibt true zurück
+// wenn die Zutat NICHT eingekauft werden muss (Vorrat reicht), false wenn
+// doch (kein Vorrat, falsche Einheit, oder zu wenig Menge).
+function istImVorratGedeckt(zutat) {
+  if (zutat.menge === null || !zutat.einheit) return false; // ohne Menge kein Abgleich möglich
+  const vorrat = LS.get('ff_vorrat', []);
+  const eintrag = vorrat.find(v => v.title.toLowerCase() === zutat.title.toLowerCase());
+  if (!eintrag || eintrag.menge === null || eintrag.einheit !== zutat.einheit) return false;
+  return eintrag.menge >= zutat.menge;
+}
+
+// Zieht die verbrauchte Menge vom Vorrat ab (z.B. wenn eine Mahlzeit als
+// gegessen markiert wird). Macht nichts wenn der Artikel nicht im Vorrat
+// ist oder die Einheiten nicht übereinstimmen.
+function verbraucheAusVorrat(titel, menge, einheit) {
+  if (menge === null || !einheit) return;
+  const vorrat = LS.get('ff_vorrat', []);
+  const updated = vorrat.map(v => {
+    if (v.title.toLowerCase() !== titel.toLowerCase()) return v;
+    if (v.menge === null || v.einheit !== einheit) return v;
+    return { ...v, menge: Math.max(0, Math.round((v.menge - menge) * 100) / 100) };
+  });
+  LS.set('ff_vorrat', updated);
+}
+
 async function syncTrello() {
   const creds = getTrelloCreds();
   if (!creds || !creds.boardId) return;
@@ -3186,6 +3562,10 @@ async function syncTrello() {
     const kuehltruheMap = {};
     existingKuehltruhe.forEach(k => { kuehltruheMap[k.title] = k; });
     const newKuehltruhe = [];
+
+    // Vorrat aus dem Hauptboard sammeln (Keller + Kühlschrank), nur genutzt
+    // wenn KEIN separates Vorrat-Board konfiguriert ist.
+    const vorratAusHauptboard = [];
 
     lists.forEach(list => {
       // ── Pool: Hauptgerichte aus der Ideenliste ────────────────
@@ -3225,6 +3605,14 @@ async function syncTrello() {
         return; // Wochentag-Verarbeitung überspringen
       }
 
+      // ── Vorrat: Keller/Kühlschrank, nur verarbeiten wenn KEIN separates
+      // Board eingetragen ist -- sonst übernimmt syncVorratBoard() exklusiv.
+      if (VORRAT_LAGERORTE.includes(list.name)) {
+        if (creds.vorratBoardId) return; // separates Board zuständig, hier überspringen
+        vorratAusHauptboard.push(...parseVorratsListe(list, LS.get('ff_vorrat', [])));
+        return; // Wochentag-Verarbeitung überspringen
+      }
+
       if (!TRELLO_DAY_LISTS.includes(list.name)) return;
 
       // ── Wochenplan: Karten in Frühstück/Mittag/Abend einteilen ──
@@ -3246,11 +3634,22 @@ async function syncTrello() {
           tagPlan.sonstige.push(entry);
         }
 
-        if (card.desc) {
+        // Karten mit Label "tiefgefroren" sind bereits eingefroren vorhandenes
+        // Essen (Kühltruhen-Reste) -- deren Zutaten NICHT nochmal einkaufen,
+        // schließlich ist das Essen ja schon da.
+        const istTiefgefroren = tags.some(t => t.toLowerCase() === 'tiefgefroren');
+
+        if (card.desc && !istTiefgefroren) {
           card.desc.split('\n').forEach(line => {
             if (isUrlLine(line)) return;
+            const wz = matchWerkzeugZeile(line);
+            if (wz) return; // Werkzeug-Zeilen sind keine Zutaten
             const zutat = parseZutat(line);
-            if (zutat && zutat.title) einkaufNeu.push({ ...zutat, source: 'rezept' });
+            // Vorrat-Abgleich: wenn genug im Vorrat liegt, muss die Zutat
+            // nicht auf die Einkaufsliste.
+            if (zutat && zutat.title && !istImVorratGedeckt(zutat)) {
+              einkaufNeu.push({ ...zutat, source: 'rezept' });
+            }
           });
         }
       });
@@ -3261,6 +3660,9 @@ async function syncTrello() {
     save('essenWoche', essenWoche);
     if (newPool.length) LS.set('ff_gerichtPool', newPool);
     LS.set('ff_kuehltruhe', newKuehltruhe); // auch leeres Array speichern (Liste kann leergeräumt worden sein)
+    if (!creds.vorratBoardId && vorratAusHauptboard.length) {
+      LS.set('ff_vorrat', vorratAusHauptboard);
+    }
 
     const behalten  = state.einkauf.filter(i => i.source !== 'rezept');
     const neueItems = einkaufNeu.map(i => ({
@@ -3269,6 +3671,9 @@ async function syncTrello() {
       kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
     }));
     save('einkauf', dedupeEinkauf([...behalten, ...neueItems]));
+
+    // Separates Vorrat-Board (falls konfiguriert) unabhängig synchronisieren
+    if (creds.vorratBoardId) await syncVorratBoard();
 
     showToast('Trello synchronisiert ✓');
   } catch (err) {
@@ -3323,6 +3728,45 @@ function getKuehltrucheAlsVorschlagKandidaten(usedTitles) {
     }))
     .filter(k => k.tageAlt >= KUEHLTRUHE_PRIORITAET_TAGE)
     .sort((a, b) => b.tageAlt - a.tageAlt); // ältestes zuerst
+}
+
+// Findet ein Gericht aus dem Pool, das eine bald ablaufende Vorratszutat
+// verwendet (innerhalb VORRATSVERBRAUCH_VORLAUF_TAGE). Bevorzugt das
+// Gericht, dessen Zutat am dringendsten ist (kürzeste Resthaltbarkeit).
+const VORRATSVERBRAUCH_VORLAUF_TAGE = 3;
+
+function getGerichtFuerAblaufendenVorrat(pool, usedTitles) {
+  const vorrat = LS.get('ff_vorrat', []);
+  const heute = new Date(today());
+
+  // Bald ablaufende Vorratsartikel ermitteln, dringendste zuerst
+  const baldAblaufend = vorrat
+    .filter(v => v.mhd)
+    .map(v => ({
+      ...v,
+      tageBisMHD: Math.round((new Date(v.mhd) - heute) / (1000 * 60 * 60 * 24)),
+    }))
+    .filter(v => v.tageBisMHD >= 0 && v.tageBisMHD <= VORRATSVERBRAUCH_VORLAUF_TAGE)
+    .sort((a, b) => a.tageBisMHD - b.tageBisMHD);
+
+  if (!baldAblaufend.length) return null;
+
+  // Für jeden bald ablaufenden Artikel: passendes, noch nicht verwendetes
+  // Gericht suchen, das diese Zutat enthält.
+  for (const artikel of baldAblaufend) {
+    const passendesGericht = pool.find(g =>
+      !usedTitles.includes(g.title) &&
+      (g.zutaten || []).some(z => z.title.toLowerCase() === artikel.title.toLowerCase())
+    );
+    if (passendesGericht) {
+      return {
+        ...passendesGericht,
+        ablaufGrund: `${artikel.title} läuft ab`,
+      };
+    }
+  }
+
+  return null;
 }
 
 function buildWochenvorschlag() {
@@ -3380,10 +3824,23 @@ function buildWochenvorschlag() {
       return;
     }
 
-    // 3) Flexibler Tag: zuerst alte Kühltruhen-Reste (ab 14 Tagen),
-    //    sonst ältestes lastEaten aus dem Pool, Low Carb leicht bevorzugt,
+    // 3) Flexibler Tag: ZUERST Gerichte die bald ablaufende Vorratsartikel
+    //    verbrauchen, DANN alte Kühltruhen-Reste (ab 14 Tagen), sonst
+    //    ältestes lastEaten aus dem Pool, Low Carb leicht bevorzugt,
     //    UND: gleiches Kochwerkzeug wie am Vortag leicht bevorzugt
     //    (z.B. Backblech zwei Tage hintereinander -- spart Abwasch).
+    const ablaufKandidat = getGerichtFuerAblaufendenVorrat(pool, used);
+    if (ablaufKandidat) {
+      vorschlag[day] = {
+        title: ablaufKandidat.title,
+        tags: [...(ablaufKandidat.tags || []), `⏰ ${ablaufKandidat.ablaufGrund}`],
+        poolId: ablaufKandidat.id,
+      };
+      used.push(ablaufKandidat.title);
+      letztesWerkzeug = ablaufKandidat.werkzeug || null;
+      return;
+    }
+
     const kuehltrucheKandidat = getKuehltrucheAlsVorschlagKandidaten(used)[0];
     if (kuehltrucheKandidat) {
       vorschlag[day] = {
