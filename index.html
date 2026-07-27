@@ -2077,16 +2077,22 @@ function renderAufgaben() {
 function renderHinweise() {
   const list = document.getElementById('hinweiseList');
   const manuelleHinweise = state.hinweise.map(h => h.text);
+  const vorratStatus = getVorratMitStatus();
 
   // Kritische/abgelaufene Vorräte automatisch als Hinweis einblenden
-  const vorratHinweise = getVorratMitStatus()
-    .filter(v => v.istKritisch || v.istAbgelaufen)
+  const vorratHinweise = vorratStatus
+    .filter(v => !v.istRest && (v.istKritisch || v.istAbgelaufen))
     .map(v => v.istAbgelaufen
       ? `📦 ${v.title} – MHD abgelaufen`
       : `📦 ${v.title} – noch ${v.tageBisMHD} Tag${v.tageBisMHD === 1 ? '' : 'e'} haltbar`
     );
 
-  const alle = [...vorratHinweise, ...manuelleHinweise];
+  // Reste, die bald aufgegessen werden müssen
+  const resteHinweise = vorratStatus
+    .filter(v => v.istRest && v.resteMussWeg)
+    .map(v => `🍽️ ${v.title} – muss aufgegessen werden (seit ${v.tageAlt} Tag${v.tageAlt === 1 ? '' : 'en'})`);
+
+  const alle = [...resteHinweise, ...vorratHinweise, ...manuelleHinweise];
 
   list.innerHTML = alle.length
     ? alle.map(text => `<li class="hinweis-item">${text}</li>`).join('')
@@ -2507,6 +2513,7 @@ function setupEinkauf() {
 // ── FAMILIE VIEW ──────────────────────────────────────────────
 // ── VORRAT VIEW ───────────────────────────────────────────────
 const VORRAT_MHD_WARNUNG_TAGE = 3;
+const RESTE_WARNUNG_TAGE = 2;
 
 function getVorratMitStatus() {
   const vorrat = LS.get('ff_vorrat', []);
@@ -2524,7 +2531,15 @@ function getVorratMitStatus() {
       istKritisch = tageBisMHD >= 0 && tageBisMHD <= VORRAT_MHD_WARNUNG_TAGE;
     }
 
-    return { ...v, tageBisMHD, istKritisch, istAbgelaufen };
+    // Reste: eigene Frist ab Anlegedatum, unabhängig vom MHD
+    let tageAlt = null;
+    let resteMussWeg = false;
+    if (v.istRest && v.angelegtAm) {
+      tageAlt = Math.round((heute - new Date(v.angelegtAm)) / (1000 * 60 * 60 * 24));
+      resteMussWeg = tageAlt >= RESTE_WARNUNG_TAGE;
+    }
+
+    return { ...v, tageBisMHD, istKritisch, istAbgelaufen, tageAlt, resteMussWeg };
   }).sort((a, b) => {
     // Kein MHD ans Ende, sonst nach verbleibenden Tagen aufsteigend (knappstes zuerst)
     if (a.mhd === null && b.mhd === null) return a.title.localeCompare(b.title);
@@ -2543,10 +2558,13 @@ function renderVorrat() {
     return;
   }
 
-  // Gruppierung: erst Lagerort (feste Reihenfolge), dann Kategorie
-  // (gleiche Kategorie-Logik wie die Einkaufsliste, für Konsistenz).
+  // Reste werden separat behandelt (eigener Block pro Lagerort, KEINE
+  // Kategorie-Gruppierung) -- alles andere läuft wie bisher nach Kategorie.
+  const reste = vorrat.filter(v => v.istRest);
+  const normal = vorrat.filter(v => !v.istRest);
+
   const nachOrt = {};
-  vorrat.forEach(v => {
+  normal.forEach(v => {
     const ort = v.lagerort || 'Sonstiger Lagerort';
     if (!nachOrt[ort]) nachOrt[ort] = {};
     const kat = resolveKat(guessKategorie(v.title));
@@ -2554,11 +2572,26 @@ function renderVorrat() {
     nachOrt[ort][kat].push(v);
   });
 
-  const ortReihenfolge = [...VORRAT_LAGERORTE, 'Sonstiger Lagerort'].filter(o => nachOrt[o]);
+  const resteNachOrt = {};
+  reste.forEach(v => {
+    const ort = v.lagerort || 'Sonstiger Lagerort';
+    if (!resteNachOrt[ort]) resteNachOrt[ort] = [];
+    resteNachOrt[ort].push(v);
+  });
+
+  const alleOrte = new Set([...Object.keys(nachOrt), ...Object.keys(resteNachOrt)]);
+  const ortReihenfolge = [...VORRAT_LAGERORTE, 'Sonstiger Lagerort'].filter(o => alleOrte.has(o));
   const ORT_ICONS = { Keller: '🧺', Kühlschrank: '🧊' };
 
   wrap.innerHTML = ortReihenfolge.map(ort => {
-    const katGruppen = KAT_ORDER.filter(k => nachOrt[ort][k]);
+    const resteHtml = resteNachOrt[ort]?.length
+      ? `<div class="vorrat-kategorie">
+           <div class="vorrat-kat-header">🍽️ Reste</div>
+           ${resteNachOrt[ort].map(v => renderVorratItem(v)).join('')}
+         </div>`
+      : '';
+
+    const katGruppen = KAT_ORDER.filter(k => nachOrt[ort]?.[k]);
     const itemsHtml = katGruppen.map(kat => `
       <div class="vorrat-kategorie">
         <div class="vorrat-kat-header">${kat}</div>
@@ -2569,6 +2602,7 @@ function renderVorrat() {
     return `
       <div class="vorrat-lagerort-block">
         <div class="vorrat-lagerort-header">${ORT_ICONS[ort] || '📦'} ${ort}</div>
+        ${resteHtml}
         ${itemsHtml}
       </div>`;
   }).join('');
@@ -2578,12 +2612,21 @@ function renderVorrat() {
       const id = btn.dataset.vid;
       const delta = parseInt(btn.dataset.delta, 10);
       const vorrat = LS.get('ff_vorrat', []);
-      const updated = vorrat.map(v => {
-        if (v.id !== id) return v;
-        if (v.menge === null) return v; // keine Menge bekannt -> nichts zu ändern
-        const neueMenge = Math.max(0, v.menge + delta);
-        return { ...v, menge: neueMenge };
-      });
+      const eintrag = vorrat.find(v => v.id === id);
+      if (!eintrag || eintrag.menge === null) return;
+
+      const neueMenge = Math.max(0, eintrag.menge + delta);
+
+      // Reste: bei Menge 0 komplett aus der Liste entfernen (aufgegessen).
+      // Normaler Vorrat bleibt mit Menge 0 sichtbar (z.B. "Nachkaufen nötig").
+      let updated;
+      if (eintrag.istRest && neueMenge === 0) {
+        updated = vorrat.filter(v => v.id !== id);
+        showToast(`${eintrag.title} aufgebraucht ✓`);
+      } else {
+        updated = vorrat.map(v => v.id === id ? { ...v, menge: neueMenge } : v);
+      }
+
       LS.set('ff_vorrat', updated);
       renderVorrat();
     });
@@ -2595,21 +2638,30 @@ function renderVorratItem(v) {
     ? `${v.menge}${v.einheit === 'st' ? ' St' : v.einheit}`
     : '–';
 
-  let mhdBadge = '';
-  if (v.istAbgelaufen) {
-    mhdBadge = `<span class="vorrat-mhd-badge abgelaufen">MHD abgelaufen</span>`;
+  let badge = '';
+  if (v.istRest) {
+    // Reste zeigen "seit wann" statt MHD, mit Warnung ab RESTE_WARNUNG_TAGE
+    if (v.resteMussWeg) {
+      badge = `<span class="vorrat-mhd-badge kritisch">muss weg – seit ${v.tageAlt} Tag${v.tageAlt === 1 ? '' : 'en'}</span>`;
+    } else {
+      badge = `<span class="vorrat-mhd-badge">seit ${v.tageAlt === 0 ? 'heute' : v.tageAlt + ' Tag' + (v.tageAlt === 1 ? '' : 'en')}</span>`;
+    }
+  } else if (v.istAbgelaufen) {
+    badge = `<span class="vorrat-mhd-badge abgelaufen">MHD abgelaufen</span>`;
   } else if (v.istKritisch) {
-    mhdBadge = `<span class="vorrat-mhd-badge kritisch">noch ${v.tageBisMHD} Tag${v.tageBisMHD === 1 ? '' : 'e'}</span>`;
+    badge = `<span class="vorrat-mhd-badge kritisch">noch ${v.tageBisMHD} Tag${v.tageBisMHD === 1 ? '' : 'e'}</span>`;
   } else if (v.mhd) {
     const mhdLabel = new Date(v.mhd).toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
-    mhdBadge = `<span class="vorrat-mhd-badge">MHD ${mhdLabel}</span>`;
+    badge = `<span class="vorrat-mhd-badge">MHD ${mhdLabel}</span>`;
   }
 
+  const istWarnung = v.istKritisch || v.istAbgelaufen || v.resteMussWeg;
+
   return `
-    <div class="vorrat-item ${v.istKritisch || v.istAbgelaufen ? 'vorrat-item-warnung' : ''}" data-vid="${v.id}">
+    <div class="vorrat-item ${istWarnung ? 'vorrat-item-warnung' : ''}" data-vid="${v.id}">
       <div class="vorrat-item-kopf">
         <span class="vorrat-item-titel">${v.title}</span>
-        ${mhdBadge}
+        ${badge}
       </div>
       <div class="vorrat-item-menge-row">
         <button class="vorrat-menge-btn" data-vid="${v.id}" data-delta="-1">−</button>
@@ -3476,10 +3528,18 @@ function parseVorratsListe(list, existingVorrat) {
     const key = card.name + '|' + list.name;
     const existing = vorratMap[key];
     const { mhd, menge, einheit } = parseVorratsBeschreibung(card.desc);
+    const { tags } = parseCardLabels(card);
+    const istRest = tags.some(t => t.toLowerCase() === 'reste');
+
     return {
       id:       existing?.id || 'vr_' + uid(),
       title:    card.name,
       lagerort: list.name, // "Keller" | "Kühlschrank"
+      istRest,
+      // Nur bei NEUEN Resten wird "heute" als Anlegedatum gesetzt -- bei
+      // bereits bekannten Resten bleibt das ursprüngliche Datum erhalten,
+      // damit die "seit wann"-Anzeige korrekt zählt.
+      angelegtAm: istRest ? (existing?.angelegtAm || today()) : null,
       mhd,                                              // immer aktuell aus Trello
       menge:    existing ? existing.menge : menge,       // lokale Anpassung bleibt
       einheit:  existing ? existing.einheit : einheit,
