@@ -968,6 +968,25 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
 }
 .brotvorrat-input:focus { border-color: var(--green); }
 
+.brot-historie { margin-top: 14px; }
+.brot-historie-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.brot-historie-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: var(--ink);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--cream-dim);
+}
+.brot-historie-item:last-child { border-bottom: none; }
+
 .orte-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .ort-item {
   display: flex;
@@ -1406,6 +1425,7 @@ body.widget-mode .puffer-breakdown { display: none; }
           <input type="number" id="brotvorratInput" class="brotvorrat-input" placeholder="Scheiben, z.B. 90" min="0" />
           <button class="connect-btn" id="brotBackenBtn">Frisch gebacken</button>
         </div>
+        <div id="brotBackHistorie" class="brot-historie"></div>
       </div>
 
       <div class="card">
@@ -1794,24 +1814,39 @@ function parseReinemenge(line) {
   return null;
 }
 
+// Parst eine Vorrats-Kartenbeschreibung: eine Zeile ist das MHD
+// ("MHD: 15.08.2026"), die erste erkannte Mengenzeile ist die Menge PRO
+// PACKUNG (z.B. "500g"), eine zweite reine Zahl danach ist die ANZAHL der
+// Packungen (z.B. "3" -> 3 Packungen à 500g = 1500g gesamt).
 function parseVorratsBeschreibung(desc) {
-  if (!desc) return { mhd: null, menge: null, einheit: null };
+  if (!desc) return { mhd: null, menge: null, einheit: null, anzahl: 1, gesamtmenge: null };
 
   let mhd = null;
   let menge = null;
   let einheit = null;
+  let anzahl = null;
 
   desc.split('\n').forEach(line => {
     if (!line.trim()) return;
     const mhdParsed = parseMHDZeile(line);
     if (mhdParsed) { mhd = mhdParsed; return; }
+
     if (menge === null) {
       const geparst = parseReinemenge(line);
-      if (geparst) { menge = geparst.menge; einheit = geparst.einheit; }
+      if (geparst) { menge = geparst.menge; einheit = geparst.einheit; return; }
+    }
+
+    // Zweite Zahl-Zeile (nachdem Menge schon gesetzt ist) = Anzahl Packungen
+    if (menge !== null && anzahl === null) {
+      const nurZahl = line.trim().match(/^(\d+)$/);
+      if (nurZahl) anzahl = parseInt(nurZahl[1], 10);
     }
   });
 
-  return { mhd, menge, einheit };
+  const anzahlFinal = anzahl || 1; // ohne zweite Zeile: genau 1 Packung
+  const gesamtmenge = (menge !== null) ? Math.round(menge * anzahlFinal * 100) / 100 : null;
+
+  return { mhd, menge, einheit, anzahl: anzahlFinal, gesamtmenge };
 }
 
 // ── RENDER FUNCTIONS ──────────────────────────────────────────
@@ -2628,15 +2663,25 @@ function renderVorrat() {
       }
 
       LS.set('ff_vorrat', updated);
+      aktualisiereEinkaufslisteGegenVorrat(); // Einkaufsliste sofort neu abgleichen
       renderVorrat();
     });
   });
 }
 
 function renderVorratItem(v) {
-  const mengeStr = v.menge !== null && v.einheit
-    ? `${v.menge}${v.einheit === 'st' ? ' St' : v.einheit}`
-    : '–';
+  let mengeStr = '–';
+  if (v.menge !== null && v.einheit) {
+    const einh = v.einheit === 'st' ? 'St' : v.einheit;
+    // "3x 500g = 1500g" nur zeigen wenn Anzahl > 1 UND die lokale Gesamtmenge
+    // noch zur Trello-Rechnung passt (sonst wurde über +/- manuell verändert
+    // -- dann zeigen wir nur die schlichte aktuelle Gesamtmenge).
+    const stimmtNochUeberein = v.anzahl > 1 && v.einzelmenge !== null
+      && Math.round(v.einzelmenge * v.anzahl * 100) / 100 === v.menge;
+    mengeStr = stimmtNochUeberein
+      ? `${v.anzahl}x ${v.einzelmenge}${einh} = ${v.menge}${einh}`
+      : `${v.menge}${einh}`;
+  }
 
   let badge = '';
   if (v.istRest) {
@@ -2730,11 +2775,37 @@ function renderBrotvorrat() {
     `;
   }
 
+  // Backhistorie: letzte paar Backvorgänge als kompakter Verlauf
+  const historieEl = document.getElementById('brotBackHistorie');
+  const historie = LS.get('ff_brotvorrat_historie', []);
+  if (historie.length) {
+    historieEl.innerHTML = `
+      <div class="brot-historie-label">Letzte Backvorgänge</div>
+      ${historie.slice(0, 5).map(h => {
+        const datumLabel = new Date(h.datum).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' });
+        return `<div class="brot-historie-item"><span>${datumLabel}</span><span>${h.menge} Scheiben</span></div>`;
+      }).join('')}
+    `;
+  } else {
+    historieEl.innerHTML = '';
+  }
+
   document.getElementById('brotBackenBtn').onclick = () => {
     const input = document.getElementById('brotvorratInput');
     const wert = parseInt(input.value, 10) || 90; // 90 als sinnvoller Default (2 Brote)
     save('brotvorrat', { bestand: wert, letztGebacken: today() });
     input.value = '';
+
+    // Historie mitschreiben (Punkt 2: Zähler/Verlauf unter der Eingabe)
+    const historie = LS.get('ff_brotvorrat_historie', []);
+    historie.unshift({ menge: wert, datum: today() });
+    LS.set('ff_brotvorrat_historie', historie.slice(0, 20)); // die letzten 20 reichen
+
+    // WICHTIG: Einkaufsliste sofort neu gegen den neuen Brotvorrat abgleichen,
+    // ohne dass dafür extra ein Trello-Sync nötig ist -- vorher blieb die
+    // Liste bis zum nächsten manuellen Sync auf dem alten Stand.
+    aktualisiereEinkaufslisteGegenVorrat();
+
     renderBrotvorrat();
     refreshAllViews();
     showToast(`Brotvorrat auf ${wert} Scheiben gesetzt ✓`);
@@ -2870,28 +2941,47 @@ async function debugTrelloStructure() {
   }
 
   try {
-    const lists = await trelloFetch(`/boards/${creds.boardId}/lists?cards=open&card_fields=name,labels,desc`);
     let report = '';
-    lists.forEach(list => {
-      report += `LISTE: "${list.name}"\n`;
-      if (!list.cards.length) {
-        report += '  (keine offenen Karten)\n';
-      }
-      list.cards.forEach(card => {
-        const labelNames = (card.labels || []).map(l => `"${l.name}"`).join(', ') || '–';
-        report += `  KARTE: "${card.name}"\n`;
-        report += `    Labels: ${labelNames}\n`;
-        if (card.desc) {
-          const lines = card.desc.split('\n').filter(Boolean).length;
-          report += `    Beschreibung: ${lines} Zeile(n)\n`;
-        }
-      });
-      report += '\n';
-    });
+
+    // Haupt-Board immer anzeigen
+    const mainLists = await trelloFetch(`/boards/${creds.boardId}/lists?cards=open&card_fields=name,labels,desc`);
+    report += `━━━ HAUPT-BOARD ━━━\n\n`;
+    report += formatBoardListen(mainLists);
+
+    // Separates Vorrat-Board zusätzlich anzeigen, falls konfiguriert --
+    // sonst sieht man Keller/Kühlschrank-Listen dort dort dieses Tool
+    // fälschlich nur das Hauptboard abfragt.
+    if (creds.vorratBoardId) {
+      const vorratLists = await trelloFetch(`/boards/${creds.vorratBoardId}/lists?cards=open&card_fields=name,labels,desc`);
+      report += `\n━━━ VORRAT-BOARD (separat) ━━━\n\n`;
+      report += formatBoardListen(vorratLists);
+    }
+
     out.textContent = report || 'Keine Listen gefunden.';
   } catch (err) {
     out.textContent = 'Fehler beim Laden: ' + err.message;
   }
+}
+
+function formatBoardListen(lists) {
+  let report = '';
+  lists.forEach(list => {
+    report += `LISTE: "${list.name}"\n`;
+    if (!list.cards.length) {
+      report += '  (keine offenen Karten)\n';
+    }
+    list.cards.forEach(card => {
+      const labelNames = (card.labels || []).map(l => `"${l.name}"`).join(', ') || '–';
+      report += `  KARTE: "${card.name}"\n`;
+      report += `    Labels: ${labelNames}\n`;
+      if (card.desc) {
+        const lines = card.desc.split('\n').filter(Boolean).length;
+        report += `    Beschreibung: ${lines} Zeile(n)\n`;
+      }
+    });
+    report += '\n';
+  });
+  return report;
 }
 
 // Entfernt nur die ursprünglichen Beispieldaten (feste IDs aus der Erstinstallation).
@@ -3527,7 +3617,7 @@ function parseVorratsListe(list, existingVorrat) {
   return list.cards.map(card => {
     const key = card.name + '|' + list.name;
     const existing = vorratMap[key];
-    const { mhd, menge, einheit } = parseVorratsBeschreibung(card.desc);
+    const { mhd, menge, einheit, anzahl, gesamtmenge } = parseVorratsBeschreibung(card.desc);
     const { tags } = parseCardLabels(card);
     const istRest = tags.some(t => t.toLowerCase() === 'reste');
 
@@ -3541,8 +3631,16 @@ function parseVorratsListe(list, existingVorrat) {
       // damit die "seit wann"-Anzeige korrekt zählt.
       angelegtAm: istRest ? (existing?.angelegtAm || today()) : null,
       mhd,                                              // immer aktuell aus Trello
-      menge:    existing ? existing.menge : menge,       // lokale Anpassung bleibt
-      einheit:  existing ? existing.einheit : einheit,
+      // "menge" ist immer die GESAMTmenge (Einzelmenge × Anzahl Packungen).
+      // Lokale Anpassungen über die +/- Buttons in FamilyFlow bleiben
+      // erhalten -- nur bei neuen Artikeln wird die Trello-Berechnung übernommen.
+      menge:       existing ? existing.menge : gesamtmenge,
+      einheit:     existing ? existing.einheit : einheit,
+      // Einzelmenge + Anzahl nur zur Anzeige ("3x 500g = 1500g") -- werden
+      // bei jedem Sync aus Trello aktualisiert, unabhängig von der lokal
+      // angepassten Gesamtmenge (die +/- Buttons ändern ja "menge" direkt).
+      einzelmenge: menge,
+      anzahl,
     };
   });
 }
@@ -3597,6 +3695,71 @@ function verbraucheAusVorrat(titel, menge, einheit) {
     return { ...v, menge: Math.max(0, Math.round((v.menge - menge) * 100) / 100) };
   });
   LS.set('ff_vorrat', updated);
+}
+
+// Rechnet einen (bereits zu Wochenbedarf summierten) Zutaten-Bedarf gegen
+// den aktuellen Vorrat/Brotvorrat ab und gibt zurück, was tatsächlich noch
+// eingekauft werden muss. Eigenständige Funktion, damit sie sowohl direkt
+// nach dem Trello-Sync als auch bei jeder späteren Vorrat-Änderung (Brot
+// backen, Menge in FamilyFlow anpassen) erneut aufgerufen werden kann --
+// OHNE dass dafür ein neuer Trello-Sync nötig ist.
+function berechneVorratAbgleich(bedarfProZutatMap) {
+  const nachVorratAbgleich = [];
+
+  bedarfProZutatMap.forEach(z => {
+    if (z.menge === null || !z.einheit) {
+      nachVorratAbgleich.push(z); // kein Mengenabgleich möglich -> komplett einkaufen
+      return;
+    }
+
+    // Sonderfall Brot: eigener Brotvorrat-Speicher (ff_brotvorrat) statt
+    // der normalen Vorrat-Liste -- nutzt dieselbe "bestandJetzt"-Berechnung
+    // wie die Brot-Backen-Warnung, damit beide Stellen konsistent sind.
+    if (z.title.toLowerCase().includes('brot')) {
+      const brotStatus = checkBrotvorratKnapp();
+      const brotBestand = brotStatus ? Math.max(0, brotStatus.bestandJetzt) : 0;
+      const rest = Math.round((z.menge - brotBestand) * 100) / 100;
+      if (rest > 0) nachVorratAbgleich.push({ ...z, menge: rest });
+      return;
+    }
+
+    const vorrat = LS.get('ff_vorrat', []);
+    const eintrag = vorrat.find(v => v.title.toLowerCase() === z.title.toLowerCase());
+    const vorratMenge = (eintrag && eintrag.menge !== null && eintrag.einheit === z.einheit) ? eintrag.menge : 0;
+
+    const rest = Math.round((z.menge - vorratMenge) * 100) / 100;
+    if (rest > 0) {
+      nachVorratAbgleich.push({ ...z, menge: rest }); // nur die Restmenge einkaufen
+    }
+    // rest <= 0 -> Vorrat deckt den gesamten Wochenbedarf, nichts einkaufen
+  });
+
+  return nachVorratAbgleich;
+}
+
+// Gleicht die Einkaufsliste NEU gegen Vorrat/Brotvorrat ab, ohne Trello
+// erneut abzufragen -- nutzt den beim letzten Sync gecachten Rohbedarf.
+// Wird aufgerufen, wenn sich der Vorrat ändert (z.B. "Frisch gebacken"),
+// damit die Liste sofort aktuell ist statt erst beim nächsten Trello-Sync.
+function aktualisiereEinkaufslisteGegenVorrat() {
+  const bedarfListe = LS.get('ff_wochenbedarf_cache', []);
+  if (!bedarfListe.length) return; // noch nie gesynct -> nichts abzugleichen
+
+  const bedarfProZutat = new Map();
+  bedarfListe.forEach(z => {
+    const key = z.title.toLowerCase().trim() + '|' + (z.einheit || '');
+    bedarfProZutat.set(key, z);
+  });
+
+  const nachVorratAbgleich = berechneVorratAbgleich(bedarfProZutat);
+
+  const behalten  = state.einkauf.filter(i => i.source !== 'rezept');
+  const neueItems = nachVorratAbgleich.map(i => ({
+    id: 'tr_' + uid(), title: i.title,
+    menge: i.menge ?? null, einheit: i.einheit ?? null,
+    kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
+  }));
+  save('einkauf', dedupeEinkauf([...behalten, ...neueItems]));
 }
 
 async function syncTrello() {
@@ -3705,11 +3868,11 @@ async function syncTrello() {
             const wz = matchWerkzeugZeile(line);
             if (wz) return; // Werkzeug-Zeilen sind keine Zutaten
             const zutat = parseZutat(line);
-            // Vorrat-Abgleich: wenn genug im Vorrat liegt, muss die Zutat
-            // nicht auf die Einkaufsliste.
-            if (zutat && zutat.title && !istImVorratGedeckt(zutat)) {
-              einkaufNeu.push({ ...zutat, source: 'rezept' });
-            }
+            // Rohe Zutat sammeln OHNE Vorrat-Abgleich -- der Abgleich
+            // passiert erst NACHDEM alle Wochentage durchlaufen sind,
+            // damit der kumulierte Wochenbedarf gegen den Vorrat geprüft
+            // wird (nicht jede Mahlzeit isoliert gegen den vollen Bestand).
+            if (zutat && zutat.title) einkaufNeu.push({ ...zutat, source: 'rezept' });
           });
         }
       });
@@ -3724,8 +3887,32 @@ async function syncTrello() {
       LS.set('ff_vorrat', vorratAusHauptboard);
     }
 
+    // Vorrat-Abgleich: erst JETZT, nachdem der komplette Wochenbedarf pro
+    // Zutat bekannt ist. Summiert z.B. 7× "180g Haferflocken" zu 1260g und
+    // zieht dann EINMAL den Vorrat ab -- nicht jede Zeile isoliert prüfen,
+    // sonst "passt" jede einzelne Zeile in den vollen Bestand, obwohl die
+    // Woche insgesamt mehr braucht als vorrätig ist.
+    const bedarfProZutat = new Map();
+    einkaufNeu.forEach(z => {
+      const key = z.title.toLowerCase().trim() + '|' + (z.einheit || '');
+      if (bedarfProZutat.has(key)) {
+        const e = bedarfProZutat.get(key);
+        if (z.menge !== null && e.menge !== null) e.menge += z.menge;
+        else e.menge = null; // eine der Mengen unbekannt -> Summe unsicher, kein Abgleich
+      } else {
+        bedarfProZutat.set(key, { ...z });
+      }
+    });
+
+    // Rohen Wochenbedarf cachen, damit spätere Änderungen am Vorrat (Brot
+    // backen, Menge in FamilyFlow anpassen) die Einkaufsliste NEU abgleichen
+    // können, ohne dafür Trello erneut abfragen zu müssen.
+    LS.set('ff_wochenbedarf_cache', Array.from(bedarfProZutat.values()));
+
+    const nachVorratAbgleich = berechneVorratAbgleich(bedarfProZutat);
+
     const behalten  = state.einkauf.filter(i => i.source !== 'rezept');
-    const neueItems = einkaufNeu.map(i => ({
+    const neueItems = nachVorratAbgleich.map(i => ({
       id: 'tr_' + uid(), title: i.title,
       menge: i.menge ?? null, einheit: i.einheit ?? null,
       kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
