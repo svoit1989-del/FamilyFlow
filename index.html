@@ -620,6 +620,13 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   transition: color 0.15s, background 0.15s;
 }
 .gegessen-btn:active { background: var(--green); color: #fff; }
+.gegessen-erledigt {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--green);
+  margin-left: auto;
+  flex-shrink: 0;
+}
 
 .vorschlag-liste { display: flex; flex-direction: column; gap: 10px; }
 .vorschlag-row {
@@ -2227,9 +2234,14 @@ function renderEssenView() {
       return entries.map((entry, idx) => {
         const tagBadges = (entry.tags || []).map(t =>
           `<span class="essen-tag" style="margin-left:6px;">${t}</span>`).join('');
-        const gegessenBtn = (mt.key === 'Abend' && (entry.poolId || entry.kuehltrucheId))
-          ? `<button class="gegessen-btn" data-pid="${entry.poolId || ''}" data-ktid="${entry.kuehltrucheId || ''}" title="Als gegessen markieren">✓</button>`
-          : '';
+        // Button erscheint jetzt für JEDE Mahlzeit (Frühstück/Mittag/Abend),
+        // nicht nur Abend -- referenziert die Karte über Tag/Slot/Index,
+        // damit beim Klick auf entry.zutaten/poolId/kuehltrucheId zugegriffen
+        // werden kann, unabhängig davon ob es ein Pool-Gericht oder eine
+        // normale Wochentags-Karte ist.
+        const gegessenBtn = !entry.gegessen
+          ? `<button class="gegessen-btn" data-day="${d}" data-slot="${mt.key}" data-idx="${idx}" title="Als gegessen markieren">✓</button>`
+          : `<span class="gegessen-erledigt">✓✓</span>`;
         const icon = idx === 0
           ? `<span class="essen-mahlzeit-icon">${mt.icon}</span>`
           : `<span class="essen-mahlzeit-icon" style="visibility:hidden;">${mt.icon}</span>`;
@@ -2264,23 +2276,45 @@ function renderEssenView() {
   // UND zieht die verwendeten Zutaten vom Vorrat ab (falls dort vorhanden).
   document.querySelectorAll('.gegessen-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (btn.dataset.pid) {
-        markAsEaten(btn.dataset.pid);
+      const { day, slot, idx } = btn.dataset;
+      const essenWoche = { ...state.essenWoche };
+      const tagPlan = essenWoche[day];
+      if (!tagPlan) return;
+      const slotArr = Array.isArray(tagPlan[slot]) ? [...tagPlan[slot]] : [];
+      const entry = slotArr[idx];
+      if (!entry) return;
+
+      // Zutaten abziehen: bevorzugt die am Eintrag selbst gespeicherten
+      // (funktioniert für JEDE Karte, auch ohne Pool-Bezug), sonst als
+      // Fallback die Pool-Zutaten (für ältere/Vorschlag-Einträge ohne
+      // eigene "zutaten").
+      let zutatenListe = entry.zutaten;
+      if (!zutatenListe && entry.poolId) {
         const pool = LS.get('ff_gerichtPool', []);
-        const gericht = pool.find(g => g.id === btn.dataset.pid);
-        if (gericht?.zutaten) {
-          gericht.zutaten.forEach(z => verbraucheAusVorrat(z.title, z.menge, z.einheit));
-        }
+        const gericht = pool.find(g => g.id === entry.poolId);
+        zutatenListe = gericht?.zutaten;
       }
-      if (btn.dataset.ktid) {
-        const updated = LS.get('ff_kuehltruhe', []).filter(k => k.id !== btn.dataset.ktid);
+      if (zutatenListe?.length) {
+        zutatenListe.forEach(z => verbraucheAusVorrat(z.title, z.menge, z.einheit));
+        aktualisiereEinkaufslisteGegenVorrat();
+        renderBrotvorrat();
+      }
+
+      if (entry.poolId) markAsEaten(entry.poolId);
+      if (entry.kuehltrucheId) {
+        const updated = LS.get('ff_kuehltruhe', []).filter(k => k.id !== entry.kuehltrucheId);
         LS.set('ff_kuehltruhe', updated);
         renderKuehltruhe();
       }
-      btn.textContent = '✓✓';
-      btn.style.color = 'var(--green)';
-      btn.disabled = true;
+
+      // Als erledigt markieren -- persistent, bleibt nach Reload erhalten
+      slotArr[idx] = { ...entry, gegessen: true };
+      tagPlan[slot] = slotArr;
+      essenWoche[day] = tagPlan;
+      save('essenWoche', essenWoche);
+
       showToast('Als gegessen markiert ✓');
+      renderEssenView();
     });
   });
 
@@ -3610,6 +3644,16 @@ function parseCardLabels(card) {
 // bekommt automatisch den Listennamen als "lagerort" zugewiesen.
 const VORRAT_LAGERORTE = ['Keller', 'Kühlschrank'];
 
+// Trello-Listennamen können unsichtbare führende/abschließende Leerzeichen
+// haben (z.B. "Kühlschrank "), die exakten String-Vergleich scheitern lassen.
+// Diese Helfer vergleichen immer getrimmt.
+function istVorratsLagerort(listName) {
+  return VORRAT_LAGERORTE.includes((listName || '').trim());
+}
+function findLagerortListe(lists, ort) {
+  return lists.find(l => (l.name || '').trim() === ort);
+}
+
 function parseVorratsListe(list, existingVorrat) {
   const vorratMap = {};
   existingVorrat.forEach(v => { vorratMap[v.title + '|' + v.lagerort] = v; });
@@ -3624,7 +3668,7 @@ function parseVorratsListe(list, existingVorrat) {
     return {
       id:       existing?.id || 'vr_' + uid(),
       title:    card.name,
-      lagerort: list.name, // "Keller" | "Kühlschrank"
+      lagerort: (list.name || '').trim(), // "Keller" | "Kühlschrank"
       istRest,
       // Nur bei NEUEN Resten wird "heute" als Anlegedatum gesetzt -- bei
       // bereits bekannten Resten bleibt das ursprüngliche Datum erhalten,
@@ -3658,12 +3702,12 @@ async function syncVorratBoard() {
 
     const newVorrat = [];
     VORRAT_LAGERORTE.forEach(ort => {
-      const liste = lists.find(l => l.name === ort);
+      const liste = findLagerortListe(lists, ort);
       if (liste) newVorrat.push(...parseVorratsListe(liste, existingVorrat));
     });
 
     // Nur überschreiben wenn wenigstens eine der Lagerort-Listen gefunden wurde
-    if (lists.some(l => VORRAT_LAGERORTE.includes(l.name))) {
+    if (lists.some(l => istVorratsLagerort(l.name))) {
       LS.set('ff_vorrat', newVorrat);
     }
   } catch (err) {
@@ -3684,10 +3728,26 @@ function istImVorratGedeckt(zutat) {
 }
 
 // Zieht die verbrauchte Menge vom Vorrat ab (z.B. wenn eine Mahlzeit als
-// gegessen markiert wird). Macht nichts wenn der Artikel nicht im Vorrat
-// ist oder die Einheiten nicht übereinstimmen.
+// gegessen markiert wird). Sonderfall Brot: reduziert den separaten
+// Brotvorrat-Speicher (ff_brotvorrat) statt der normalen Vorrat-Liste,
+// damit beide Systeme konsistent zueinander bleiben. Macht sonst nichts
+// wenn der Artikel nicht im Vorrat ist oder die Einheiten nicht übereinstimmen.
 function verbraucheAusVorrat(titel, menge, einheit) {
   if (menge === null || !einheit) return;
+
+  if (titel.toLowerCase().includes('brot')) {
+    const vorrat = state.brotvorrat;
+    if (vorrat.bestand === null) return; // kein Brotvorrat hinterlegt -> nichts abzuziehen
+    const brotStatus = checkBrotvorratKnapp();
+    const aktuellerBestand = brotStatus ? Math.max(0, brotStatus.bestandJetzt) : vorrat.bestand;
+    const neuerBestand = Math.max(0, Math.round((aktuellerBestand - menge) * 100) / 100);
+    // "letztGebacken" auf heute setzen, damit die rückwirkende Prognose-
+    // Berechnung ab jetzt von diesem neuen, bereits reduzierten Bestand
+    // ausgeht statt den Verbrauch doppelt (Prognose + manueller Abzug) zu zählen.
+    save('brotvorrat', { bestand: neuerBestand, letztGebacken: today() });
+    return;
+  }
+
   const vorrat = LS.get('ff_vorrat', []);
   const updated = vorrat.map(v => {
     if (v.title.toLowerCase() !== titel.toLowerCase()) return v;
@@ -3830,7 +3890,7 @@ async function syncTrello() {
 
       // ── Vorrat: Keller/Kühlschrank, nur verarbeiten wenn KEIN separates
       // Board eingetragen ist -- sonst übernimmt syncVorratBoard() exklusiv.
-      if (VORRAT_LAGERORTE.includes(list.name)) {
+      if (istVorratsLagerort(list.name)) {
         if (creds.vorratBoardId) return; // separates Board zuständig, hier überspringen
         vorratAusHauptboard.push(...parseVorratsListe(list, LS.get('ff_vorrat', [])));
         return; // Wochentag-Verarbeitung überspringen
@@ -3844,7 +3904,38 @@ async function syncTrello() {
 
       cards.forEach(card => {
         const { mealTime, tags } = parseCardLabels(card);
-        const entry = { title: card.name, tags };
+
+        // Karten mit Label "tiefgefroren" sind bereits eingefroren vorhandenes
+        // Essen (Kühltruhen-Reste) -- deren Zutaten NICHT nochmal einkaufen,
+        // schließlich ist das Essen ja schon da.
+        const istTiefgefroren = tags.some(t => t.toLowerCase() === 'tiefgefroren');
+
+        // Zutaten der Karte selbst parsen und direkt am Eintrag speichern --
+        // damit JEDE Karte (nicht nur Pool-Gerichte) beim "Als gegessen"
+        // markieren ihre Zutaten korrekt vom Vorrat abziehen kann.
+        const kartenZutaten = [];
+        if (card.desc) {
+          card.desc.split('\n').forEach(line => {
+            if (isUrlLine(line)) return;
+            const wz = matchWerkzeugZeile(line);
+            if (wz) return; // Werkzeug-Zeilen sind keine Zutaten
+            const zutat = parseZutat(line);
+            if (zutat && zutat.title) {
+              kartenZutaten.push(zutat);
+              // Rohe Zutat weiterhin für den Wochenbedarf sammeln, außer bei
+              // "tiefgefroren" (siehe Kommentar oben) -- der Vorrat-Abgleich
+              // passiert erst NACHDEM alle Wochentage durchlaufen sind.
+              if (!istTiefgefroren) einkaufNeu.push({ ...zutat, source: 'rezept' });
+            }
+          });
+        }
+
+        const entry = {
+          id: 'wp_' + card.id, // eindeutige, stabile ID über Trello-Karten-ID
+          title: card.name,
+          tags,
+          zutaten: kartenZutaten,
+        };
 
         if (mealTime) {
           // Alle Karten mit erkanntem Mahlzeit-Label in den passenden Slot pushen
@@ -3855,25 +3946,6 @@ async function syncTrello() {
         } else {
           // Weitere Karten ohne Label landen in sonstige
           tagPlan.sonstige.push(entry);
-        }
-
-        // Karten mit Label "tiefgefroren" sind bereits eingefroren vorhandenes
-        // Essen (Kühltruhen-Reste) -- deren Zutaten NICHT nochmal einkaufen,
-        // schließlich ist das Essen ja schon da.
-        const istTiefgefroren = tags.some(t => t.toLowerCase() === 'tiefgefroren');
-
-        if (card.desc && !istTiefgefroren) {
-          card.desc.split('\n').forEach(line => {
-            if (isUrlLine(line)) return;
-            const wz = matchWerkzeugZeile(line);
-            if (wz) return; // Werkzeug-Zeilen sind keine Zutaten
-            const zutat = parseZutat(line);
-            // Rohe Zutat sammeln OHNE Vorrat-Abgleich -- der Abgleich
-            // passiert erst NACHDEM alle Wochentage durchlaufen sind,
-            // damit der kumulierte Wochenbedarf gegen den Vorrat geprüft
-            // wird (nicht jede Mahlzeit isoliert gegen den vollen Bestand).
-            if (zutat && zutat.title) einkaufNeu.push({ ...zutat, source: 'rezept' });
-          });
         }
       });
 
