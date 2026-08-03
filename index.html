@@ -2276,45 +2276,50 @@ function renderEssenView() {
   // UND zieht die verwendeten Zutaten vom Vorrat ab (falls dort vorhanden).
   document.querySelectorAll('.gegessen-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const { day, slot, idx } = btn.dataset;
-      const essenWoche = { ...state.essenWoche };
-      const tagPlan = essenWoche[day];
-      if (!tagPlan) return;
-      const slotArr = Array.isArray(tagPlan[slot]) ? [...tagPlan[slot]] : [];
-      const entry = slotArr[idx];
-      if (!entry) return;
+      try {
+        const { day, slot, idx } = btn.dataset;
+        const essenWoche = { ...state.essenWoche };
+        const tagPlan = essenWoche[day];
+        if (!tagPlan) { showToast('Fehler: Tag nicht gefunden.'); return; }
+        const slotArr = Array.isArray(tagPlan[slot]) ? [...tagPlan[slot]] : [];
+        const entry = slotArr[idx];
+        if (!entry) { showToast('Fehler: Eintrag nicht gefunden.'); return; }
 
-      // Zutaten abziehen: bevorzugt die am Eintrag selbst gespeicherten
-      // (funktioniert für JEDE Karte, auch ohne Pool-Bezug), sonst als
-      // Fallback die Pool-Zutaten (für ältere/Vorschlag-Einträge ohne
-      // eigene "zutaten").
-      let zutatenListe = entry.zutaten;
-      if (!zutatenListe && entry.poolId) {
-        const pool = LS.get('ff_gerichtPool', []);
-        const gericht = pool.find(g => g.id === entry.poolId);
-        zutatenListe = gericht?.zutaten;
+        // Zutaten abziehen: bevorzugt die am Eintrag selbst gespeicherten
+        // (funktioniert für JEDE Karte, auch ohne Pool-Bezug), sonst als
+        // Fallback die Pool-Zutaten (für ältere/Vorschlag-Einträge ohne
+        // eigene "zutaten").
+        let zutatenListe = entry.zutaten;
+        if (!zutatenListe && entry.poolId) {
+          const pool = LS.get('ff_gerichtPool', []);
+          const gericht = pool.find(g => g.id === entry.poolId);
+          zutatenListe = gericht?.zutaten;
+        }
+        if (zutatenListe?.length) {
+          zutatenListe.forEach(z => verbraucheAusVorrat(z.title, z.menge, z.einheit));
+          aktualisiereEinkaufslisteGegenVorrat();
+          renderBrotvorrat();
+        }
+
+        if (entry.poolId) markAsEaten(entry.poolId);
+        if (entry.kuehltrucheId) {
+          const updated = LS.get('ff_kuehltruhe', []).filter(k => k.id !== entry.kuehltrucheId);
+          LS.set('ff_kuehltruhe', updated);
+          renderKuehltruhe();
+        }
+
+        // Als erledigt markieren -- persistent, bleibt nach Reload erhalten
+        slotArr[idx] = { ...entry, gegessen: true };
+        tagPlan[slot] = slotArr;
+        essenWoche[day] = tagPlan;
+        save('essenWoche', essenWoche);
+
+        showToast('Als gegessen markiert ✓');
+        renderEssenView();
+      } catch (err) {
+        console.error('Fehler beim Als-gegessen-Markieren:', err);
+        showToast('Fehler: ' + err.message);
       }
-      if (zutatenListe?.length) {
-        zutatenListe.forEach(z => verbraucheAusVorrat(z.title, z.menge, z.einheit));
-        aktualisiereEinkaufslisteGegenVorrat();
-        renderBrotvorrat();
-      }
-
-      if (entry.poolId) markAsEaten(entry.poolId);
-      if (entry.kuehltrucheId) {
-        const updated = LS.get('ff_kuehltruhe', []).filter(k => k.id !== entry.kuehltrucheId);
-        LS.set('ff_kuehltruhe', updated);
-        renderKuehltruhe();
-      }
-
-      // Als erledigt markieren -- persistent, bleibt nach Reload erhalten
-      slotArr[idx] = { ...entry, gegessen: true };
-      tagPlan[slot] = slotArr;
-      essenWoche[day] = tagPlan;
-      save('essenWoche', essenWoche);
-
-      showToast('Als gegessen markiert ✓');
-      renderEssenView();
     });
   });
 
