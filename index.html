@@ -525,7 +525,12 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   margin-bottom: 10px;
 }
 .vorrat-item-warnung {
-  border-left: 3px solid var(--status-mid);
+  background: rgba(200,125,42,0.14);
+  border-left: 4px solid var(--status-mid);
+}
+.vorrat-item-abgelaufen {
+  background: rgba(184,64,64,0.14);
+  border-left: 4px solid var(--status-red);
 }
 .vorrat-item-kopf {
   display: flex;
@@ -2059,10 +2064,69 @@ function checkBrotvorratKnapp() {
   };
 }
 
+// ── AUFGABEN-FOLGEREGELN ──────────────────────────────────────
+// Erweiterbares Regelsystem: wenn eine Google-Task mit bestimmten
+// Schlüsselwörtern im Titel für GESTERN fällig war, werden heute
+// automatisch Folgeaufgaben eingeblendet. Rein virtuell -- landet
+// nicht in state.aufgaben, wird bei jedem Render neu berechnet.
+//
+// Neue Regel hinzufügen: einfach ein weiteres Objekt in dieses Array
+// einfügen, z.B. für "Rasen mähen" -> "Rasenmäher wegräumen".
+const AUFGABEN_FOLGEREGELN = [
+  {
+    schluesselwoerter: ['wäsche', 'waschen'], // Titel muss ALLE Wörter enthalten
+    folgeaufgaben: ['🧺 Wäsche abnehmen', '🧺 Wäsche aufräumen'],
+  },
+];
+
+// Prüft, ob ein Aufgaben-Titel alle Schlüsselwörter einer Regel enthält
+// (Groß-/Kleinschreibung egal).
+function titelPasstZuRegel(titel, schluesselwoerter) {
+  const t = titel.toLowerCase();
+  return schluesselwoerter.every(w => t.includes(w.toLowerCase()));
+}
+
+// Ermittelt alle Folgeaufgaben, die für HEUTE fällig sind, weil GESTERN
+// eine passende Google-Task erledigt oder fällig war.
+function getFolgeaufgabenFuerHeute() {
+  const gestern = new Date(today());
+  gestern.setDate(gestern.getDate() - 1);
+  const gesternStr = toLocalDateStr(gestern);
+
+  // Sowohl offene als auch bereits erledigte Google-Tasks von gestern
+  // zählen als Auslöser -- Wäsche waschen ist ja meist am selben Tag erledigt.
+  const gestrigeAufgaben = state.aufgaben.filter(a => a.date === gesternStr);
+  const bereitsErledigt = new Set(LS.get('ff_regel_erledigt', []));
+
+  const folgeaufgaben = [];
+  AUFGABEN_FOLGEREGELN.forEach(regel => {
+    const ausloeser = gestrigeAufgaben.find(a => titelPasstZuRegel(a.title, regel.schluesselwoerter));
+    if (!ausloeser) return;
+    regel.folgeaufgaben.forEach((titel, i) => {
+      const regelId = `regel-${regel.schluesselwoerter.join('-')}-${i}-${gesternStr}`;
+      folgeaufgaben.push({
+        id: regelId,
+        title: titel,
+        duration: 0,
+        done: bereitsErledigt.has(regelId),
+        virtuell: true,
+        regelBasiert: true,
+        subtitle: `Folge von "${ausloeser.title}"`,
+      });
+    });
+  });
+
+  return folgeaufgaben;
+}
+
 function renderAufgaben() {
   const list = document.getElementById('aufgabenList');
   const todayStr = today();
   const heutigeAufgaben = [...state.aufgaben.filter(a => a.date === todayStr)];
+
+  // Folgeaufgaben aus Regeln einfügen (z.B. "Wäsche abnehmen" nach
+  // "Wäsche waschen" gestern)
+  heutigeAufgaben.push(...getFolgeaufgabenFuerHeute());
 
   // Virtuelle Aufgabe "Brot backen" einfügen, falls Vorrat knapp wird.
   // Wird NICHT in state.aufgaben gespeichert -- ist reine Anzeige-Logik,
@@ -2086,7 +2150,7 @@ function renderAufgaben() {
 
   list.innerHTML = heutigeAufgaben.map(a => `
     <li class="aufgabe-item">
-      <div class="aufgabe-check ${a.done ? 'done' : ''} ${a.virtuell ? 'virtuell' : ''}" data-id="${a.id}">
+      <div class="aufgabe-check ${a.done ? 'done' : ''} ${a.virtuell ? 'virtuell' : ''}" data-id="${a.id}" ${a.regelBasiert ? `data-regel-id="${a.id}"` : ''}>
         ${a.done ? '✓' : ''}
       </div>
       <div class="aufgabe-body">
@@ -2099,21 +2163,44 @@ function renderAufgaben() {
   list.querySelectorAll('.aufgabe-check:not(.virtuell)').forEach(el => {
     el.addEventListener('click', () => {
       const id = el.dataset.id;
-      const aufg = state.aufgaben.map(a => a.id === id ? { ...a, done: !a.done } : a);
+      const aufgabe = state.aufgaben.find(a => a.id === id);
+      if (!aufgabe) return;
+      const neuerStatus = !aufgabe.done;
+
+      const aufg = state.aufgaben.map(a => a.id === id ? { ...a, done: neuerStatus } : a);
       save('aufgaben', aufg);
       renderAufgaben();
       renderPuffer();
+
+      // Bei Google-Aufgaben den Status auch zurück nach Google Tasks
+      // schreiben, damit z.B. der Google Kalender/die Tasks-App ebenfalls
+      // den erledigt-Status zeigt (bidirektionale Synchronisierung).
+      schreibeGoogleTaskStatus(aufgabe, neuerStatus);
     });
   });
 
   // Klick auf die virtuelle Brot-Aufgabe springt direkt zur Eintragefunktion
-  const brotCheck = list.querySelector('.aufgabe-check.virtuell');
+  const brotCheck = list.querySelector('.aufgabe-check[data-id="brot-backen-virtuell"]');
   if (brotCheck) {
     brotCheck.addEventListener('click', () => {
       switchView('familie');
       setTimeout(() => document.getElementById('brotBackenBtn')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
     });
   }
+
+  // Klick auf eine Regel-Folgeaufgabe (z.B. "Wäsche abnehmen") markiert sie
+  // lokal als erledigt -- bleibt über Reload hinweg bestehen, damit sie
+  // nicht am nächsten Tag erneut als "offen" erscheint. Läuft automatisch
+  // aus, da die Regel nur für EINEN Tag (gestern -> heute) greift.
+  list.querySelectorAll('.aufgabe-check[data-regel-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.regelId;
+      const erledigt = new Set(LS.get('ff_regel_erledigt', []));
+      erledigt.add(id);
+      LS.set('ff_regel_erledigt', Array.from(erledigt));
+      renderAufgaben();
+    });
+  });
 }
 
 function renderHinweise() {
@@ -2739,10 +2826,12 @@ function renderVorratItem(v) {
     badge = `<span class="vorrat-mhd-badge">MHD ${mhdLabel}</span>`;
   }
 
-  const istWarnung = v.istKritisch || v.istAbgelaufen || v.resteMussWeg;
+  let statusKlasse = '';
+  if (v.istAbgelaufen) statusKlasse = 'vorrat-item-abgelaufen';
+  else if (v.istKritisch || v.resteMussWeg) statusKlasse = 'vorrat-item-warnung';
 
   return `
-    <div class="vorrat-item ${istWarnung ? 'vorrat-item-warnung' : ''}" data-vid="${v.id}">
+    <div class="vorrat-item ${statusKlasse}" data-vid="${v.id}">
       <div class="vorrat-item-kopf">
         <span class="vorrat-item-titel">${v.title}</span>
         ${badge}
@@ -3365,7 +3454,7 @@ function registerServiceWorker() {
 const GOOGLE_CLIENT_ID = '936464755463-i9a3gjjmn6pdfn1eu85tqhv8nvos2njn.apps.googleusercontent.com';
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
-  'https://www.googleapis.com/auth/tasks.readonly',
+  'https://www.googleapis.com/auth/tasks', // Vollzugriff (nicht nur readonly) -- nötig fürs Zurückschreiben beim Abhaken
 ].join(' ');
 
 // Trello-Keys NIE hardcoden – kommen vom Nutzer, landen nur in LocalStorage.
@@ -3522,19 +3611,31 @@ async function syncGoogleCalendar() {
 async function syncGoogleTasks() {
   if (!isGoogleConnected()) return;
   try {
-    const res = await fetch('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=false', {
+    // showCompleted=true (statt false) -- sonst verschwinden Tasks, die
+    // direkt in Google Tasks abgehakt wurden, einfach aus der Abfrage,
+    // statt als erledigt (durchgestrichen) bei uns anzukommen.
+    const res = await fetch('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=true&showHidden=true', {
       headers: { Authorization: `Bearer ${googleAccessToken.token}` },
     });
     if (!res.ok) throw new Error('Tasks API: ' + res.status);
     const data = await res.json();
+
+    // Bereits lokal geänderten Done-Status kurz merken -- falls der
+    // Manager-Wert neuer ist als der letzte Google-Sync (z.B. gerade erst
+    // hier abgehakt, aber der Rückschreib-Call noch nicht durchgelaufen),
+    // soll ein Sync das nicht überschreiben.
+    const localById = {};
+    state.aufgaben.forEach(a => { if (a.source === 'google') localById[a.id] = a; });
 
     const gTasks = (data.items || []).map(t => {
       // Google liefert 'due' im Format "2026-06-22T00:00:00.000Z" -- das ist
       // absichtlich immer UTC-Mitternacht (Tasks kennen keine Uhrzeit), daher
       // reicht hier ein direktes Datum-Parsing ohne Zeitzonen-Korrektur.
       const dueDate = t.due ? t.due.slice(0, 10) : null;
+      const id = 'g_' + t.id;
       return {
-        id: 'g_' + t.id,
+        id,
+        googleTaskId: t.id, // rohe ID ohne Präfix, für den Rückschreib-Call
         title: t.title || '(Ohne Titel)',
         duration: 0,
         done: t.status === 'completed',
@@ -3548,6 +3649,33 @@ async function syncGoogleTasks() {
   } catch (err) {
     console.error('Google Tasks Sync Fehler:', err);
     showToast('Aufgaben-Sync fehlgeschlagen.');
+  }
+}
+
+// Schreibt den Erledigt-Status EINER Aufgabe zurück nach Google Tasks.
+// Wird beim Abhaken im Manager aufgerufen, damit die Task auch in Google
+// Tasks (und damit z.B. im Google Kalender / der Tasks-App) als erledigt
+// erscheint. Macht nichts bei nicht-Google-Aufgaben oder ohne Verbindung.
+async function schreibeGoogleTaskStatus(aufgabe, done) {
+  if (aufgabe.source !== 'google' || !aufgabe.googleTaskId) return;
+  if (!isGoogleConnected()) return;
+
+  try {
+    const res = await fetch(
+      `https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/${aufgabe.googleTaskId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${googleAccessToken.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: done ? 'completed' : 'needsAction' }),
+      }
+    );
+    if (!res.ok) throw new Error('Tasks API PATCH: ' + res.status);
+  } catch (err) {
+    console.error('Google Task Status zurückschreiben fehlgeschlagen:', err);
+    showToast('Konnte Status nicht zu Google synchronisieren.');
   }
 }
 
@@ -3818,8 +3946,14 @@ function aktualisiereEinkaufslisteGegenVorrat() {
 
   const nachVorratAbgleich = berechneVorratAbgleich(bedarfProZutat);
 
+  // Artikel, die bereits als "erledigt" abgehakt wurden, NICHT erneut in
+  // die aktive Liste aufnehmen -- sonst taucht beim nächsten Sync/Reload
+  // alles wieder als offen auf, obwohl es schon eingekauft wurde.
+  const erledigtTitel = new Set(state.einkaufErledigt.map(i => i.title.toLowerCase().trim()));
+  const nachErledigtFilter = nachVorratAbgleich.filter(i => !erledigtTitel.has(i.title.toLowerCase().trim()));
+
   const behalten  = state.einkauf.filter(i => i.source !== 'rezept');
-  const neueItems = nachVorratAbgleich.map(i => ({
+  const neueItems = nachErledigtFilter.map(i => ({
     id: 'tr_' + uid(), title: i.title,
     menge: i.menge ?? null, einheit: i.einheit ?? null,
     kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
@@ -3988,8 +4122,14 @@ async function syncTrello() {
 
     const nachVorratAbgleich = berechneVorratAbgleich(bedarfProZutat);
 
+    // Artikel, die bereits als "erledigt" abgehakt wurden, NICHT erneut in
+    // die aktive Liste aufnehmen -- sonst taucht beim nächsten Sync/Reload
+    // alles wieder als offen auf, obwohl es schon eingekauft wurde.
+    const erledigtTitel = new Set(state.einkaufErledigt.map(i => i.title.toLowerCase().trim()));
+    const nachErledigtFilter = nachVorratAbgleich.filter(i => !erledigtTitel.has(i.title.toLowerCase().trim()));
+
     const behalten  = state.einkauf.filter(i => i.source !== 'rezept');
-    const neueItems = nachVorratAbgleich.map(i => ({
+    const neueItems = nachErledigtFilter.map(i => ({
       id: 'tr_' + uid(), title: i.title,
       menge: i.menge ?? null, einheit: i.einheit ?? null,
       kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
@@ -4063,15 +4203,18 @@ function getGerichtFuerAblaufendenVorrat(pool, usedTitles) {
   const vorrat = LS.get('ff_vorrat', []);
   const heute = new Date(today());
 
-  // Bald ablaufende Vorratsartikel ermitteln, dringendste zuerst
+  // Bald ablaufende UND bereits abgelaufene Vorratsartikel ermitteln,
+  // dringendste (am weitesten überfällig) zuerst. Vorher wurden bereits
+  // abgelaufene Artikel (tageBisMHD < 0) fälschlich ausgeschlossen --
+  // gerade die sind aber am dringendsten zu verwerten.
   const baldAblaufend = vorrat
     .filter(v => v.mhd)
     .map(v => ({
       ...v,
       tageBisMHD: Math.round((new Date(v.mhd) - heute) / (1000 * 60 * 60 * 24)),
     }))
-    .filter(v => v.tageBisMHD >= 0 && v.tageBisMHD <= VORRATSVERBRAUCH_VORLAUF_TAGE)
-    .sort((a, b) => a.tageBisMHD - b.tageBisMHD);
+    .filter(v => v.tageBisMHD <= VORRATSVERBRAUCH_VORLAUF_TAGE)
+    .sort((a, b) => a.tageBisMHD - b.tageBisMHD); // am weitesten überfällig zuerst
 
   if (!baldAblaufend.length) return null;
 
