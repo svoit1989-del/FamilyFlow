@@ -383,6 +383,12 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   color: var(--muted);
   margin-top: 1px;
 }
+.aufgabe-ueberfaellig {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--status-red);
+  margin-top: 1px;
+}
 
 /* ===== HINWEISE CARD ===== */
 .card-hinweise { border-left: 3px solid var(--green); }
@@ -2122,7 +2128,12 @@ function getFolgeaufgabenFuerHeute() {
 function renderAufgaben() {
   const list = document.getElementById('aufgabenList');
   const todayStr = today();
-  const heutigeAufgaben = [...state.aufgaben.filter(a => a.date === todayStr)];
+  // Heutige Aufgaben UND alle offenen (nicht erledigten) aus der
+  // Vergangenheit -- damit nichts verloren geht, das man verpasst hat.
+  // Erledigte Aufgaben aus der Vergangenheit bleiben ausgeblendet.
+  const heutigeAufgaben = [...state.aufgaben.filter(a =>
+    a.date && a.date <= todayStr && !a.done
+  ), ...state.aufgaben.filter(a => a.date === todayStr && a.done)];
 
   // Folgeaufgaben aus Regeln einfügen (z.B. "Wäsche abnehmen" nach
   // "Wäsche waschen" gestern)
@@ -2148,17 +2159,25 @@ function renderAufgaben() {
     return;
   }
 
-  list.innerHTML = heutigeAufgaben.map(a => `
+  const todayStrForDisplay = today();
+  list.innerHTML = heutigeAufgaben.map(a => {
+    const istUeberfaellig = a.date && a.date < todayStrForDisplay;
+    const ueberfaelligHint = istUeberfaellig
+      ? `<div class="aufgabe-ueberfaellig">seit ${new Date(a.date).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}</div>`
+      : '';
+    return `
     <li class="aufgabe-item">
       <div class="aufgabe-check ${a.done ? 'done' : ''} ${a.virtuell ? 'virtuell' : ''}" data-id="${a.id}" ${a.regelBasiert ? `data-regel-id="${a.id}"` : ''}>
         ${a.done ? '✓' : ''}
       </div>
       <div class="aufgabe-body">
         <div class="aufgabe-title ${a.done ? 'done' : ''}">${a.title}</div>
+        ${ueberfaelligHint}
         ${a.subtitle ? `<div class="aufgabe-dur">${a.subtitle}</div>` : ''}
         ${a.duration ? `<div class="aufgabe-dur">${fmt(a.duration)}</div>` : ''}
       </div>
-    </li>`).join('');
+    </li>`;
+  }).join('');
 
   list.querySelectorAll('.aufgabe-check:not(.virtuell)').forEach(el => {
     el.addEventListener('click', () => {
@@ -2506,12 +2525,17 @@ function openVorschlagModal() {
 function uebernehmeVorschlag() {
   if (!_aktuellerVorschlag) return;
   const essenWoche = { ...state.essenWoche };
+  const regeln = getWochenregeln();
 
   // Erst prüfen, wie viele Tage bereits einen Abend-Eintrag haben --
   // danach fragen wir einmal gesammelt nach, statt pro Tag zu unterbrechen.
+  // Tage mit FESTER Regel (z.B. Freitag = Fisch) zählen NICHT als "belegte
+  // Tage" im Nachfrage-Sinn -- die werden sowieso nie überschrieben, siehe
+  // unten, unabhängig von der Nutzer-Antwort.
   const belegteTage = [];
   Object.entries(_aktuellerVorschlag).forEach(([day, gericht]) => {
     if (!gericht) return;
+    if (regeln[day]?.fixLabel) return; // feste Regel-Tage nie zur Nachfrage zählen
     const tag = essenWoche[day] || {};
     const abendArr = Array.isArray(tag.Abend) ? tag.Abend : (tag.Abend ? [tag.Abend] : []);
     if (abendArr.length > 0) belegteTage.push(day);
@@ -2531,7 +2555,13 @@ function uebernehmeVorschlag() {
     const abend = essenWoche[day].Abend;
     const abendArr = !abend ? [] : Array.isArray(abend) ? abend : [abend];
 
-    // Leerer Tag: immer setzen. Belegter Tag: nur setzen wenn Bestätigung erfolgt ist.
+    // Feste Regel-Tage (z.B. Freitag = Fisch): NIE überschreiben, wenn dort
+    // schon etwas steht -- unabhängig von der allgemeinen Bestätigung oben.
+    const istFesterRegelTag = !!regeln[day]?.fixLabel;
+    if (istFesterRegelTag && abendArr.length > 0) return;
+
+    // Leerer Tag: immer setzen. Belegter Tag (ohne feste Regel): nur setzen
+    // wenn Bestätigung erfolgt ist.
     if (abendArr.length === 0 || ueberschreiben) {
       essenWoche[day].Abend = [{
         title:  gericht.title,
@@ -3098,13 +3128,24 @@ function formatBoardListen(lists) {
     if (!list.cards.length) {
       report += '  (keine offenen Karten)\n';
     }
+    // Bei Vorrats-Listen den VOLLEN Beschreibungstext zeigen (nicht nur die
+    // Zeilenanzahl) -- wichtig um MHD-/Mengen-Parsing-Probleme zu erkennen.
+    const zeigeVollenText = istVorratsLagerort(list.name) || (list.name || '').trim() === 'Vorrat';
+
     list.cards.forEach(card => {
       const labelNames = (card.labels || []).map(l => `"${l.name}"`).join(', ') || '–';
       report += `  KARTE: "${card.name}"\n`;
       report += `    Labels: ${labelNames}\n`;
       if (card.desc) {
-        const lines = card.desc.split('\n').filter(Boolean).length;
-        report += `    Beschreibung: ${lines} Zeile(n)\n`;
+        if (zeigeVollenText) {
+          report += `    Beschreibung (roh):\n`;
+          card.desc.split('\n').forEach(line => {
+            report += `      "${line}"\n`;
+          });
+        } else {
+          const lines = card.desc.split('\n').filter(Boolean).length;
+          report += `    Beschreibung: ${lines} Zeile(n)\n`;
+        }
       }
     });
     report += '\n';
