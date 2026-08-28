@@ -969,6 +969,12 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   color: var(--muted);
   margin-top: 2px;
 }
+.brotvorrat-menge-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
 .brotvorrat-form {
   display: flex;
   gap: 10px;
@@ -1439,6 +1445,7 @@ body.widget-mode .puffer-breakdown { display: none; }
       <div class="card">
         <div class="card-label">🍞 Brotvorrat</div>
         <div id="brotvorratStatus" class="brotvorrat-status"></div>
+        <div id="brotvorratMengeRow" class="brotvorrat-menge-row"></div>
         <div class="brotvorrat-form">
           <input type="number" id="brotvorratInput" class="brotvorrat-input" placeholder="Scheiben, z.B. 90" min="0" />
           <button class="connect-btn" id="brotBackenBtn">Frisch gebacken</button>
@@ -1762,9 +1769,45 @@ function guessKategorie(title) {
 //   "1.5l Milch"          → { title: "Milch",          menge: 1.5, einheit: "l" }
 //   "Salz"                → { title: "Salz",           menge: null, einheit: null }
 const EINHEITEN = ['kg','g','ml','l','tl','el','st','stk','pck','prise','bund','scheib','scheibe'];
+// Plural-/Alternativformen, die auf eine bekannte Einheit normalisiert werden
+// -- sonst rutscht z.B. "7 Scheiben Brot" durch, weil "scheiben" (Plural)
+// nicht in EINHEITEN steht, und "Scheiben Brot" wird fälschlich zum Produktnamen.
+const EINHEIT_PLURAL_MAP = {
+  'scheiben': 'scheibe',
+  'stücke': 'st', 'stück': 'st', 'stk': 'st', 'stks': 'st',
+  'prisen': 'prise',
+  'bunde': 'bund', 'bündel': 'bund',
+  'päckchen': 'pck', 'pack': 'pck', 'packung': 'pck', 'packungen': 'pck',
+};
+function normalisiereEinheit(wort) {
+  const w = wort.toLowerCase().replace('.', '');
+  if (EINHEITEN.includes(w)) return w;
+  if (EINHEIT_PLURAL_MAP[w]) return EINHEIT_PLURAL_MAP[w];
+  return null;
+}
 function parseZutat(line) {
   const clean = line.replace(/^[-*•]\s*/, '').trim();
   if (!clean) return null;
+
+  // Muster: "<Anzahl> x <Menge><Einheit> <Name>", z.B. "4 x 250 g Quark"
+  // oder "4x250g Quark" -- ergibt die tatsächliche GESAMTmenge (4×250g=1000g),
+  // nicht nur die Packungsanzahl. Muss VOR den anderen Mustern geprüft werden,
+  // da "4 x 250 g Quark" sonst als Zahl+Einheit "x" (ungültig) durchfällt und
+  // im Fallback einen kaputten Titel wie "x 250 g Quark" erzeugt.
+  const mit_multiplikator = clean.match(/^(\d+)\s*[x×]\s*(\d+[.,]?\d*)\s*([a-zäöü]*)\.?\s+(.+)$/i);
+  if (mit_multiplikator) {
+    const anzahl = parseInt(mit_multiplikator[1], 10);
+    const einzelmenge = parseFloat(mit_multiplikator[2].replace(',', '.'));
+    const einheitWort = mit_multiplikator[3] ? normalisiereEinheit(mit_multiplikator[3]) : 'st';
+    if (einheitWort) {
+      return {
+        title:   mit_multiplikator[4].trim(),
+        menge:   Math.round(anzahl * einzelmenge * 100) / 100,
+        einheit: einheitWort,
+        raw: clean,
+      };
+    }
+  }
 
   // Muster: Zahl direkt gefolgt von einer bekannten Einheit (ohne Leerzeichen
   // dazwischen erlaubt), dann der Produktname. Bekannte Einheit ist Pflicht
@@ -1772,8 +1815,8 @@ function parseZutat(line) {
   // als Einheitswort geprüft und verworfen werden.
   const mit_einheit = clean.match(/^(\d+[.,]?\d*)\s*([a-zäöü]+)\.?\s+(.+)$/i);
   if (mit_einheit) {
-    const einheitWort = mit_einheit[2].toLowerCase().replace('.', '');
-    if (EINHEITEN.includes(einheitWort)) {
+    const einheitWort = normalisiereEinheit(mit_einheit[2]);
+    if (einheitWort) {
       return {
         title:   mit_einheit[3].trim(),
         menge:   parseFloat(mit_einheit[1].replace(',', '.')),
@@ -1802,7 +1845,9 @@ function parseZutat(line) {
 // als "YYYY-MM-DD" zurück (intern konsistentes Format wie überall sonst
 // in der App). Gibt null zurück wenn die Zeile kein MHD enthält.
 function parseMHDZeile(line) {
-  const m = line.trim().match(/^MHD:?\s*(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/i);
+  // "MHD"-Präfix ist optional -- eine reine Datumszeile wie "04.06.2027"
+  // wird ebenfalls als Ablaufdatum erkannt.
+  const m = line.trim().match(/^(?:MHD:?\s*)?(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/i);
   if (!m) return null;
   const [, tag, monat, jahrRaw] = m;
   const jahr = jahrRaw.length === 2 ? '20' + jahrRaw : jahrRaw;
@@ -2003,9 +2048,17 @@ function getBrotVerbrauchFuerTag(dayName_) {
   ['Frühstück', 'Mittag', 'Abend'].forEach(slot => {
     const entries = Array.isArray(tagPlan[slot]) ? tagPlan[slot] : (tagPlan[slot] ? [tagPlan[slot]] : []);
     entries.forEach(entry => {
-      const poolEintrag = entry.poolId ? pool.find(g => g.id === entry.poolId) : poolByTitle[entry.title];
-      if (!poolEintrag || !poolEintrag.zutaten) return;
-      poolEintrag.zutaten.forEach(z => {
+      // Zutaten bevorzugt DIREKT vom Eintrag nehmen (jede Wochentags-Karte
+      // hat seit dem letzten Sync ihre eigenen Zutaten gespeichert) --
+      // Pool-Lookup nur als Fallback für ältere/Vorschlag-Einträge ohne
+      // eigene "zutaten" (z.B. reine poolId-Referenzen).
+      let zutatenListe = entry.zutaten;
+      if (!zutatenListe) {
+        const poolEintrag = entry.poolId ? pool.find(g => g.id === entry.poolId) : poolByTitle[entry.title];
+        zutatenListe = poolEintrag?.zutaten;
+      }
+      if (!zutatenListe) return;
+      zutatenListe.forEach(z => {
         if (z.title.toLowerCase().includes('brot') && z.menge !== null) {
           brotScheiben += z.menge;
         }
@@ -2331,7 +2384,7 @@ function renderEssenView() {
 
     // Slot ist jetzt immer ein Array – auch bei alten Daten (null/object) absichern
     const toArr = v => !v ? [] : Array.isArray(v) ? v : [v];
-    const hatEintrag = MEAL_TIME_ORDER.some(mt => toArr(m[mt.key]).length > 0);
+    const hatEintrag = MEAL_TIME_ORDER.some(mt => toArr(m[mt.key]).length > 0) || toArr(m.sonstige).length > 0;
 
     const zeilen = MEAL_TIME_ORDER.map(mt => {
       const entries = toArr(m[mt.key]);
@@ -2361,12 +2414,36 @@ function renderEssenView() {
       }).join('');
     }).join('');
 
+    // "sonstige" wurde bisher NIE angezeigt -- Karten ohne Mahlzeit-Label,
+    // die keinen freien Standard-Slot mehr fanden (z.B. zweite Karte ohne
+    // Label an einem Tag), landen dort und waren dadurch unsichtbar,
+    // obwohl sie korrekt gespeichert waren. Jetzt als eigener Block mit
+    // eigenem Icon sichtbar, gleiches Verhalten (klickbar, abhakbar).
+    const sonstigeEntries = toArr(m.sonstige);
+    const sonstigeZeilen = sonstigeEntries.map((entry, idx) => {
+      const tagBadges = (entry.tags || []).map(t =>
+        `<span class="essen-tag" style="margin-left:6px;">${t}</span>`).join('');
+      const gegessenBtn = !entry.gegessen
+        ? `<button class="gegessen-btn" data-day="${d}" data-slot="sonstige" data-idx="${idx}" title="Als gegessen markieren">✓</button>`
+        : `<span class="gegessen-erledigt">✓✓</span>`;
+      const icon = idx === 0
+        ? `<span class="essen-mahlzeit-icon">🍴</span>`
+        : `<span class="essen-mahlzeit-icon" style="visibility:hidden;">🍴</span>`;
+      return `
+        <div class="essen-mahlzeit-row">
+          ${icon}
+          <span class="essen-mahlzeit-titel gericht-clickable" data-day="${d}" data-slot="sonstige" data-idx="${idx}">${entry.title}</span>
+          ${tagBadges}
+          ${gegessenBtn}
+        </div>`;
+    }).join('');
+
     return `
       <div class="essen-tag-card" style="${isToday ? 'border-left:3px solid var(--green);' : ''}">
         <div class="essen-tag-name" style="${isToday ? 'color:var(--green);font-weight:800;' : ''}">
           ${label}${isToday ? ' · Heute' : ''}
         </div>
-        ${hatEintrag ? zeilen : `<div class="essen-tag-gericht leer gericht-clickable" data-day="${d}" data-slot="Abend" data-idx="0">Noch nicht geplant</div>`}
+        ${hatEintrag ? zeilen + sonstigeZeilen : `<div class="essen-tag-gericht leer gericht-clickable" data-day="${d}" data-slot="Abend" data-idx="0">Noch nicht geplant</div>`}
       </div>`;
   }).join('');
 
@@ -2916,10 +2993,12 @@ function renderFamilie() {
 // (oder 90 als Default) als neuen Bestand ein, Datum = heute.
 function renderBrotvorrat() {
   const statusEl = document.getElementById('brotvorratStatus');
+  const mengeRowEl = document.getElementById('brotvorratMengeRow');
   const vorrat = state.brotvorrat;
 
   if (vorrat.bestand === null) {
     statusEl.innerHTML = '<span class="brotvorrat-hint">Noch kein Vorrat hinterlegt.</span>';
+    mengeRowEl.innerHTML = '';
   } else {
     const brotStatus = checkBrotvorratKnapp();
     const datumStr = vorrat.letztGebacken
@@ -2931,6 +3010,26 @@ function renderBrotvorrat() {
       </div>
       <div class="brotvorrat-hint">Gebacken: ${vorrat.bestand} Scheiben am ${datumStr}</div>
     `;
+
+    // Manuelle +/- Anpassung: nimmt den aktuell PROGNOSTIZIERTEN Bestand
+    // als neuen Ausgangspunkt (nicht den ursprünglich gebackenen Wert),
+    // und setzt "letztGebacken" auf heute, damit die Prognose ab jetzt
+    // sauber vom korrigierten Stand weiterrechnet.
+    mengeRowEl.innerHTML = `
+      <button class="vorrat-menge-btn" id="brotMengeMinus">−</button>
+      <span class="vorrat-menge-anzeige">${brotStatus.bestandJetzt} Scheiben</span>
+      <button class="vorrat-menge-btn" id="brotMengePlus">+</button>
+    `;
+
+    const anpassen = (delta) => {
+      const neuerBestand = Math.max(0, brotStatus.bestandJetzt + delta);
+      save('brotvorrat', { bestand: neuerBestand, letztGebacken: today() });
+      aktualisiereEinkaufslisteGegenVorrat();
+      renderBrotvorrat();
+      refreshAllViews();
+    };
+    document.getElementById('brotMengeMinus').onclick = () => anpassen(-1);
+    document.getElementById('brotMengePlus').onclick = () => anpassen(1);
   }
 
   // Backhistorie: letzte paar Backvorgänge als kompakter Verlauf
@@ -2993,13 +3092,32 @@ async function debugGoogleTasks() {
     report += JSON.stringify(listsData.items || listsData, null, 2);
     report += '\n\n';
 
-    const tasksRes = await fetch('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=false&showHidden=true', {
-      headers: { Authorization: `Bearer ${googleAccessToken.token}` },
-    });
-    const tasksData = await tasksRes.json();
+    // Gleiche Einstellungen wie syncGoogleTasks() (showCompleted=true,
+    // maxResults=100, volle Pagination) -- sonst zeigt das Debug-Tool
+    // etwas anderes als das, was tatsächlich synchronisiert wird.
+    let alleItems = [];
+    let pageToken = null;
+    let seiten = 0;
+    do {
+      const url = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks'
+        + '?showCompleted=true&showHidden=true&maxResults=100'
+        + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
+      const tasksRes = await fetch(url, {
+        headers: { Authorization: `Bearer ${googleAccessToken.token}` },
+      });
+      const tasksData = await tasksRes.json();
+      if (!tasksRes.ok) {
+        report += `TASKS Fehler (Status ${tasksRes.status}):\n` + JSON.stringify(tasksData, null, 2);
+        out.textContent = report;
+        return;
+      }
+      alleItems = alleItems.concat(tasksData.items || []);
+      pageToken = tasksData.nextPageToken || null;
+      seiten++;
+    } while (pageToken);
 
-    report += `TASKS aus @default (Status ${tasksRes.status}):\n`;
-    report += JSON.stringify(tasksData.items || tasksData, null, 2);
+    report += `TASKS aus @default (${seiten} Seite(n), ${alleItems.length} gesamt):\n`;
+    report += JSON.stringify(alleItems, null, 2);
 
     out.textContent = report;
   } catch (err) {
@@ -3652,23 +3770,27 @@ async function syncGoogleCalendar() {
 async function syncGoogleTasks() {
   if (!isGoogleConnected()) return;
   try {
-    // showCompleted=true (statt false) -- sonst verschwinden Tasks, die
-    // direkt in Google Tasks abgehakt wurden, einfach aus der Abfrage,
-    // statt als erledigt (durchgestrichen) bei uns anzukommen.
-    const res = await fetch('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=true&showHidden=true', {
-      headers: { Authorization: `Bearer ${googleAccessToken.token}` },
-    });
-    if (!res.ok) throw new Error('Tasks API: ' + res.status);
-    const data = await res.json();
+    // Google Tasks liefert standardmäßig nur ~20 Ergebnisse pro Anfrage
+    // (Pagination via nextPageToken) -- ohne das komplett zu durchlaufen,
+    // fehlen bei mehr als ~20 Tasks einfach die "hinteren" Einträge, z.B.
+    // ältere oder alphabetisch spätere Tasks wie "Bad putzen". maxResults=100
+    // reduziert zusätzlich die nötige Seitenzahl in den meisten Fällen.
+    let alleItems = [];
+    let pageToken = null;
+    do {
+      const url = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks'
+        + '?showCompleted=true&showHidden=true&maxResults=100'
+        + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${googleAccessToken.token}` },
+      });
+      if (!res.ok) throw new Error('Tasks API: ' + res.status);
+      const data = await res.json();
+      alleItems = alleItems.concat(data.items || []);
+      pageToken = data.nextPageToken || null;
+    } while (pageToken);
 
-    // Bereits lokal geänderten Done-Status kurz merken -- falls der
-    // Manager-Wert neuer ist als der letzte Google-Sync (z.B. gerade erst
-    // hier abgehakt, aber der Rückschreib-Call noch nicht durchgelaufen),
-    // soll ein Sync das nicht überschreiben.
-    const localById = {};
-    state.aufgaben.forEach(a => { if (a.source === 'google') localById[a.id] = a; });
-
-    const gTasks = (data.items || []).map(t => {
+    const gTasks = alleItems.map(t => {
       // Google liefert 'due' im Format "2026-06-22T00:00:00.000Z" -- das ist
       // absichtlich immer UTC-Mitternacht (Tasks kennen keine Uhrzeit), daher
       // reicht hier ein direktes Datum-Parsing ohne Zeitzonen-Korrektur.
@@ -3764,6 +3886,9 @@ function isUrlLine(line) {
   if (/https?:\/\/\S+/i.test(t)) return true;
   // Markdown-Link [Text](url)
   if (/\[.*\]\(https?:\/\/\S+\)/i.test(t)) return true;
+  // URL OHNE http(s)-Präfix, z.B. "www.chefkoch.de/rezepte/..." oder
+  // "chefkoch.de/rezepte/..." -- erkannt an Domain-Endung + Pfad danach.
+  if (/^(www\.)?[a-z0-9-]+\.[a-z]{2,}(\/\S*)?$/i.test(t)) return true;
   // Typische Share-Boilerplate von Rezept-Apps/-Seiten
   if (/^(hunger\?|rezept auf|gefunden auf|quelle:|via )/i.test(t)) return true;
   return false;
