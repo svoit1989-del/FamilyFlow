@@ -571,8 +571,15 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   display: flex;
   align-items: center;
   gap: 14px;
+  margin-top: 8px;
 }
-.vorrat-menge-btn {
+.vorrat-zaehler-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 76px;
+}
+.vorrat-menge-btn, .vorrat-anzahl-btn {
   width: 34px;
   height: 34px;
   border-radius: 50%;
@@ -581,8 +588,10 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   font-size: 1.2rem;
   font-weight: 700;
   transition: background 0.15s;
+  flex-shrink: 0;
 }
-.vorrat-menge-btn:active { background: var(--green); color: #fff; }
+.vorrat-menge-btn:active, .vorrat-anzahl-btn:active { background: var(--green); color: #fff; }
+.vorrat-anzahl-btn { background: var(--cream-dim); }
 .vorrat-menge-anzeige {
   flex: 1;
   text-align: center;
@@ -2900,20 +2909,48 @@ function renderVorrat() {
       renderVorrat();
     });
   });
+
+  // "Anzahl ganzer Packungen"-Zähler: ändert anzahl um ±1 UND verschiebt die
+  // Gesamtmenge um genau eine Packungsgröße (einzelmenge) -- z.B. eine ganze
+  // 500g-Tüte Haferflocken aufgebraucht -> Anzahl -1, Menge -500g.
+  wrap.querySelectorAll('.vorrat-anzahl-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.vid;
+      const delta = parseInt(btn.dataset.delta, 10);
+      const vorrat = LS.get('ff_vorrat', []);
+      const eintrag = vorrat.find(v => v.id === id);
+      if (!eintrag || eintrag.einzelmenge === null) return;
+
+      const neueAnzahl = Math.max(0, (eintrag.anzahl || 0) + delta);
+      const mengeDelta = delta * eintrag.einzelmenge;
+      const neueMenge = Math.max(0, (eintrag.menge || 0) + mengeDelta);
+
+      let updated;
+      if (eintrag.istRest && neueMenge === 0) {
+        updated = vorrat.filter(v => v.id !== id);
+        showToast(`${eintrag.title} aufgebraucht ✓`);
+      } else {
+        updated = vorrat.map(v => v.id === id ? { ...v, anzahl: neueAnzahl, menge: neueMenge } : v);
+      }
+
+      LS.set('ff_vorrat', updated);
+      aktualisiereEinkaufslisteGegenVorrat();
+      renderVorrat();
+    });
+  });
+}
+
+// Schrittgröße für den Menge-Zähler: 10 bei Gewicht/Volumen (g/kg/ml/l),
+// 1 bei Stück-basierten Einheiten (St, Becher, Ei, Packung, etc.).
+function getVorratSchritt(einheit) {
+  return ['g', 'kg', 'ml', 'l'].includes(einheit) ? 10 : 1;
 }
 
 function renderVorratItem(v) {
   let mengeStr = '–';
   if (v.menge !== null && v.einheit) {
     const einh = v.einheit === 'st' ? 'St' : v.einheit;
-    // "3x 500g = 1500g" nur zeigen wenn Anzahl > 1 UND die lokale Gesamtmenge
-    // noch zur Trello-Rechnung passt (sonst wurde über +/- manuell verändert
-    // -- dann zeigen wir nur die schlichte aktuelle Gesamtmenge).
-    const stimmtNochUeberein = v.anzahl > 1 && v.einzelmenge !== null
-      && Math.round(v.einzelmenge * v.anzahl * 100) / 100 === v.menge;
-    mengeStr = stimmtNochUeberein
-      ? `${v.anzahl}x ${v.einzelmenge}${einh} = ${v.menge}${einh}`
-      : `${v.menge}${einh}`;
+    mengeStr = `${v.menge}${einh}`;
   }
 
   let badge = '';
@@ -2937,16 +2974,34 @@ function renderVorratItem(v) {
   if (v.istAbgelaufen) statusKlasse = 'vorrat-item-abgelaufen';
   else if (v.istKritisch || v.resteMussWeg) statusKlasse = 'vorrat-item-warnung';
 
+  // Zweiter Zähler "Anzahl ganzer Packungen" nur zeigen, wenn aus Trello
+  // eine Packungsgröße bekannt ist (z.B. "500g" + "3" -> einzelmenge=500,
+  // anzahl=3). Ändert man ihn, wird die Gesamtmenge um genau eine
+  // Packungsgröße rauf/runter gesetzt. Der "Menge"-Zähler bleibt daneben
+  // für feinere Anpassungen (z.B. teilweise verbrauchte Packung) erhalten.
+  const hatPackungsgroesse = v.einzelmenge !== null && v.einzelmenge > 0;
+  const anzahlRow = hatPackungsgroesse ? `
+    <div class="vorrat-item-menge-row">
+      <span class="vorrat-zaehler-label">📦 Packungen</span>
+      <button class="vorrat-anzahl-btn" data-vid="${v.id}" data-delta="-1">−</button>
+      <span class="vorrat-menge-anzeige">${v.anzahl ?? 0}</span>
+      <button class="vorrat-anzahl-btn" data-vid="${v.id}" data-delta="1">+</button>
+    </div>` : '';
+
+  const mengeSchritt = getVorratSchritt(v.einheit);
+
   return `
     <div class="vorrat-item ${statusKlasse}" data-vid="${v.id}">
       <div class="vorrat-item-kopf">
         <span class="vorrat-item-titel">${v.title}</span>
         ${badge}
       </div>
+      ${anzahlRow}
       <div class="vorrat-item-menge-row">
-        <button class="vorrat-menge-btn" data-vid="${v.id}" data-delta="-1">−</button>
+        ${hatPackungsgroesse ? '<span class="vorrat-zaehler-label">Menge</span>' : ''}
+        <button class="vorrat-menge-btn" data-vid="${v.id}" data-delta="-${mengeSchritt}">−</button>
         <span class="vorrat-menge-anzeige">${mengeStr}</span>
-        <button class="vorrat-menge-btn" data-vid="${v.id}" data-delta="1">+</button>
+        <button class="vorrat-menge-btn" data-vid="${v.id}" data-delta="${mengeSchritt}">+</button>
       </div>
     </div>`;
 }
