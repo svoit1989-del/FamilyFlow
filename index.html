@@ -861,6 +861,34 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   font-weight: 600;
   color: var(--ink);
 }
+.regel-gruppe {
+  background: var(--cream);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.regel-ausloeser {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--forest);
+  margin-bottom: 6px;
+}
+.regel-zeile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.regel-text { flex: 1; font-size: 0.88rem; color: var(--ink); }
+.regel-meta {
+  font-size: 0.7rem; font-weight: 700; color: var(--green);
+  background: #fff; border-radius: 99px; padding: 2px 8px;
+}
+.einkauf-fuer {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+}
 .einkauf-menge {
   font-size: 0.75rem;
   color: var(--green);
@@ -1529,6 +1557,15 @@ select.modal-input { background: #fff; }
       </div>
 
       <div class="card">
+        <div class="view-header-row">
+          <div class="card-label" style="margin-bottom:0;">⚙️ Regeln</div>
+          <button class="vorschlag-btn" id="regelNeuBtn">+ Regel</button>
+        </div>
+        <p class="reset-hint" style="margin-top:8px;">Folgeaufgaben erscheinen, wenn die auslösende Aufgabe abgehakt wird. Materialien kommen auf die Einkaufsliste, wenn sie im Vorrat fehlen.</p>
+        <div id="regelnListe"></div>
+      </div>
+
+      <div class="card">
         <div class="card-label">Wartung</div>
         <p class="reset-hint">Entfernt die Beispiel-Termine und -Aufgaben aus der ersten Einrichtung. Echte Google-/Trello-Daten, deine Orte und Kapazitätseinstellungen bleiben erhalten.</p>
         <button class="reset-btn" id="resetTestdataBtn">Testdaten entfernen</button>
@@ -1602,7 +1639,8 @@ select.modal-input { background: #fff; }
       <div class="modal-box">
         <div class="modal-title" id="vorratModalTitel">Artikel anlegen</div>
         <label class="modal-label">Artikel</label>
-        <input class="modal-input" id="vmArtikel" placeholder="z.B. Haferflocken" />
+        <input class="modal-input" id="vmArtikel" list="vmArtikelListe" autocomplete="off" placeholder="z.B. Haferflocken" />
+        <datalist id="vmArtikelListe"></datalist>
         <div class="modal-grid2">
           <div>
             <label class="modal-label">Menge (gesamt)</label>
@@ -1658,10 +1696,11 @@ select.modal-input { background: #fff; }
       <div class="modal-box">
         <div class="modal-title" id="wartungModalTitel">Wartungsaufgabe anlegen</div>
         <label class="modal-label">Gerät</label>
-        <input class="modal-input" id="wmGeraet" list="wmGeraetListe" placeholder="z.B. Kaffeemaschine" />
+        <input class="modal-input" id="wmGeraet" list="wmGeraetListe" autocomplete="off" placeholder="z.B. Kaffeemaschine" />
         <datalist id="wmGeraetListe"></datalist>
         <label class="modal-label">Aufgabe</label>
-        <input class="modal-input" id="wmAufgabe" placeholder="z.B. Entkalken" />
+        <input class="modal-input" id="wmAufgabe" list="wmAufgabeListe" autocomplete="off" placeholder="z.B. Entkalken" />
+        <datalist id="wmAufgabeListe"></datalist>
         <label class="modal-label">Intervall in Tagen (leer = fester Termin)</label>
         <input class="modal-input" id="wmIntervall" type="number" step="1" min="1" placeholder="z.B. 90" />
         <label class="modal-label">Zuletzt erledigt</label>
@@ -1676,6 +1715,39 @@ select.modal-input { background: #fff; }
           <button class="modal-btn danger" id="wmLoeschen" style="display:none;">Löschen</button>
           <button class="modal-btn secondary" id="wmAbbrechen">Abbrechen</button>
           <button class="modal-btn primary" id="wmSpeichern">Speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- REGEL EINGABE MODAL -->
+    <div class="modal-overlay" id="regelModal">
+      <div class="modal-box">
+        <div class="modal-title" id="regelModalTitel">Regel anlegen</div>
+        <label class="modal-label">Auslöser (Wörter im Aufgabentitel)</label>
+        <input class="modal-input" id="rmAusloeser" list="rmAusloeserListe" autocomplete="off" placeholder="z.B. wäsche waschen" />
+        <datalist id="rmAusloeserListe"></datalist>
+        <label class="modal-label">Typ</label>
+        <select class="modal-input" id="rmTyp">
+          <option value="folge">Folgeaufgabe</option>
+          <option value="material">Material (für Einkaufsliste)</option>
+        </select>
+        <label class="modal-label" id="rmInhaltLabel">Folgeaufgabe</label>
+        <input class="modal-input" id="rmInhalt" list="rmInhaltListe" autocomplete="off" placeholder="z.B. Trockner starten" />
+        <datalist id="rmInhaltListe"></datalist>
+        <div id="rmVersatzWrap">
+          <label class="modal-label">Wann nach dem Abhaken?</label>
+          <select class="modal-input" id="rmVersatz">
+            <option value="0">Gleicher Tag</option>
+            <option value="1">Nächster Tag (+1)</option>
+            <option value="2">In 2 Tagen (+2)</option>
+            <option value="3">In 3 Tagen (+3)</option>
+            <option value="7">In einer Woche (+7)</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn danger" id="rmLoeschen" style="display:none;">Löschen</button>
+          <button class="modal-btn secondary" id="rmAbbrechen">Abbrechen</button>
+          <button class="modal-btn primary" id="rmSpeichern">Speichern</button>
         </div>
       </div>
     </div>
@@ -1742,26 +1814,18 @@ const LS = {
 const DEFAULTS = {
   kapazitaet: { schlaf: 8, arbeit: 8, fahrzeit: 1.2, haushalt: 0.8, training: 1.0 },
 
-  termine: [
-    { id: 't1', time: '08:00', title: 'Kita bringen',      subtitle: 'Rehbergheim',   source: 'manual', date: today() },
-    { id: 't2', time: '15:00', title: 'Rehbergheim holen', subtitle: '35 min Fahrt',  source: 'manual', date: today() },
-    { id: 't3', time: '18:00', title: 'Kinderturnen',      subtitle: '',              source: 'manual', date: today() },
-  ],
+  termine: [],
 
-  aufgaben: [
-    { id: 'a1', title: 'Bad putzen',       duration: 45, done: false, source: 'manual', date: today() },
-    { id: 'a2', title: 'Wäsche aufhängen', duration: 20, done: false, source: 'manual', date: today() },
-    { id: 'a3', title: 'Einkaufen',        duration: 60, done: false, source: 'manual', date: today() },
-  ],
+  aufgaben: [],
 
   essenWoche: {
-    Montag:     { Frühstück: [], Mittag: [{ title: 'Spaghetti Bolognese', tags: [] }], Abend: [{ title: 'Salat', tags: [] }], sonstige: [] },
-    Dienstag:   { Frühstück: [], Mittag: [{ title: 'Hühnersuppe', tags: [] }],         Abend: [{ title: 'Brot', tags: [] }],  sonstige: [] },
-    Mittwoch:   { Frühstück: [{ title: 'Pfannkuchen', tags: [] }], Mittag: [],         Abend: [],                             sonstige: [] },
-    Donnerstag: { Frühstück: [], Mittag: [{ title: 'Lachs mit Reis', tags: [] }],      Abend: [{ title: 'Brokkoli', tags: [] }], sonstige: [] },
-    Freitag:    { Frühstück: [], Mittag: [{ title: 'Pizza', tags: [] }],               Abend: [{ title: 'Eis', tags: [] }],   sonstige: [] },
-    Samstag:    { Frühstück: [], Mittag: [], Abend: [{ title: 'Grillen', tags: [] }],  sonstige: [] },
-    Sonntag:    { Frühstück: [], Mittag: [], Abend: [],                                sonstige: [] },
+    Montag:     { Frühstück: [], Mittag: [], Abend: [], sonstige: [] },
+    Dienstag:   { Frühstück: [], Mittag: [], Abend: [], sonstige: [] },
+    Mittwoch:   { Frühstück: [], Mittag: [], Abend: [], sonstige: [] },
+    Donnerstag: { Frühstück: [], Mittag: [], Abend: [], sonstige: [] },
+    Freitag:    { Frühstück: [], Mittag: [], Abend: [], sonstige: [] },
+    Samstag:    { Frühstück: [], Mittag: [], Abend: [], sonstige: [] },
+    Sonntag:    { Frühstück: [], Mittag: [], Abend: [], sonstige: [] },
   },
 
   orte: [
@@ -1770,19 +1834,9 @@ const DEFAULTS = {
     { id: 'o3', name: 'Kindergarten',         fahrzeit: 12 },
   ],
 
-  einkauf: [
-    { id: 'e1', title: 'Hackfleisch',  kategorie: 'Fleisch & Wurst',  checked: false, source: 'rezept' },
-    { id: 'e2', title: 'Spaghetti',    kategorie: 'Vorrat',           checked: false, source: 'rezept' },
-    { id: 'e3', title: 'Tomaten',      kategorie: 'Obst & Gemüse',    checked: false, source: 'rezept' },
-    { id: 'e4', title: 'Badreiniger',  kategorie: 'Haushalt',         checked: false, source: 'aufgabe' },
-    { id: 'e5', title: 'Schwamm',      kategorie: 'Haushalt',         checked: false, source: 'aufgabe' },
-    { id: 'e6', title: 'Milch',        kategorie: 'Milchprodukte',    checked: false, source: 'manual' },
-  ],
+  einkauf: [],
 
-  hinweise: [
-    { id: 'h1', text: 'Badreiniger fehlt – auf Einkaufsliste' },
-    { id: 'h2', text: 'Training eingeplant: 1 h' },
-  ],
+  hinweise: [],
 
   naechsteFahrt: '14:25',
 };
@@ -1803,6 +1857,22 @@ let state = {
 };
 
 function save(key, val) { state[key] = val; LS.set('ff_' + key, val); }
+
+// Einmalige Bereinigung alter Testdaten aus der ersten Version (feste IDs):
+// "Badreiniger fehlt"-Hinweis, Beispiel-Einkäufe, -Termine und -Aufgaben.
+(function entferneAlteTestdaten() {
+  const SEED = {
+    hinweise: ['h1', 'h2'],
+    einkauf:  ['e1', 'e2', 'e3', 'e4', 'e5', 'e6'],
+    termine:  ['t1', 't2', 't3'],
+    aufgaben: ['a1', 'a2', 'a3'],
+  };
+  Object.entries(SEED).forEach(([key, ids]) => {
+    const vorher = state[key] || [];
+    const nachher = vorher.filter(x => !ids.includes(x.id));
+    if (nachher.length !== vorher.length) save(key, nachher);
+  });
+})();
 
 // ── HELPERS ───────────────────────────────────────────────────
 
@@ -2295,54 +2365,123 @@ function checkBrotvorratKnapp() {
   };
 }
 
-// ── AUFGABEN-FOLGEREGELN ──────────────────────────────────────
-// Erweiterbares Regelsystem: wenn eine Google-Task mit bestimmten
-// Schlüsselwörtern im Titel für GESTERN fällig war, werden heute
-// automatisch Folgeaufgaben eingeblendet. Rein virtuell -- landet
-// nicht in state.aufgaben, wird bei jedem Render neu berechnet.
-//
-// Neue Regel hinzufügen: einfach ein weiteres Objekt in dieses Array
-// einfügen, z.B. für "Rasen mähen" -> "Rasenmäher wegräumen".
-const AUFGABEN_FOLGEREGELN = [
-  {
-    schluesselwoerter: ['wäsche', 'waschen'], // Titel muss ALLE Wörter enthalten
-    folgeaufgaben: ['🧺 Wäsche abnehmen', '🧺 Wäsche aufräumen'],
-  },
+// ── REGELN (Folgeaufgaben + Materialien) ──────────────────────
+// Datengesteuert: gepflegt in der App (Karte "Regeln" unter Familie),
+// gespeichert im Tab "Regeln" des Wartung-Sheets. Eine Zeile = ein Schritt:
+//   { id, ausloeser: 'wäsche waschen', typ: 'folge'|'material', inhalt, versatz }
+// Auslöser: alle Wörter müssen im Aufgabentitel vorkommen (Groß-/Klein egal).
+const DEFAULT_REGELN = [
+  { id: 'rg_w1', ausloeser: 'wäsche waschen', typ: 'folge', inhalt: 'Trockner starten',     versatz: 0 },
+  { id: 'rg_w2', ausloeser: 'wäsche waschen', typ: 'folge', inhalt: 'Wäsche zusammenlegen', versatz: 1 },
+  { id: 'rg_w3', ausloeser: 'wäsche waschen', typ: 'folge', inhalt: 'Wäsche aufräumen',     versatz: 1 },
+  { id: 'rg_b1', ausloeser: 'bad putzen',     typ: 'material', inhalt: 'Badreiniger',       versatz: null },
+  { id: 'rg_b2', ausloeser: 'bad putzen',     typ: 'material', inhalt: 'Schwamm',           versatz: null },
 ];
+const REGEL_AUSLOESE_FENSTER_TAGE = 7;  // nur kürzlich abgehakte Auslöser zählen
+const MATERIAL_VORLAUF_TAGE = 3;        // Material für Aufgaben bis so viele Tage im Voraus prüfen
 
-// Prüft, ob ein Aufgaben-Titel alle Schlüsselwörter einer Regel enthält
-// (Groß-/Kleinschreibung egal).
+function getRegeln() {
+  return LS.get('ff_regeln', null) ?? DEFAULT_REGELN;
+}
+function schluesselwoerterVon(ausloeser) {
+  return (ausloeser || '').toLowerCase().split(/[\s,+]+/).filter(Boolean);
+}
+// Prüft, ob ein Aufgaben-Titel alle Schlüsselwörter enthält (Groß-/Klein egal).
 function titelPasstZuRegel(titel, schluesselwoerter) {
-  const t = titel.toLowerCase();
-  return schluesselwoerter.every(w => t.includes(w.toLowerCase()));
+  const t = (titel || '').toLowerCase();
+  return schluesselwoerter.length > 0 && schluesselwoerter.every(w => t.includes(w.toLowerCase()));
 }
 
-// Ermittelt alle Folgeaufgaben, die für HEUTE fällig sind, weil GESTERN
-// eine passende Google-Task erledigt oder fällig war.
-function getFolgeaufgabenFuerHeute() {
-  const gestern = new Date(today());
-  gestern.setDate(gestern.getDate() - 1);
-  const gesternStr = toLocalDateStr(gestern);
+// Material gilt als vorhanden, wenn es im Vorrat mit Menge > 0 steht (bzw.
+// ohne Mengenangabe eingetragen ist). Ein Reiniger reicht für viele
+// Einsätze, daher wird hier nur "da / nicht da" geprüft, nichts abgezogen.
+function istMaterialImVorrat(material) {
+  const key = normKey(material);
+  return LS.get('ff_vorrat', []).some(v =>
+    normKey(v.title) === key && (v.menge === null || v.menge === undefined || v.menge > 0));
+}
 
-  // Sowohl offene als auch bereits erledigte Google-Tasks von gestern
-  // zählen als Auslöser -- Wäsche waschen ist ja meist am selben Tag erledigt.
-  const gestrigeAufgaben = state.aufgaben.filter(a => a.date === gesternStr);
+// Ermittelt fehlende Materialien für anstehende Aufgaben und setzt die
+// Einkaufsliste-Einträge der Quelle "material" komplett neu (entfernt also
+// auch Einträge, die inzwischen nicht mehr nötig sind).
+function aktualisiereMaterialEinkauf() {
+  const bis = new Date(today());
+  bis.setDate(bis.getDate() + MATERIAL_VORLAUF_TAGE);
+  const bisStr = toLocalDateStr(bis);
+
+  // offene Aufgaben: überfällig, heute oder in den nächsten Tagen
+  const anstehend = state.aufgaben.filter(a => !a.done && a.date && a.date <= bisStr);
+  const materialRegeln = getRegeln().filter(r => r.typ === 'material' && r.inhalt);
+
+  const erledigtTitel = new Set(state.einkaufErledigt.map(i => normKey(i.title)));
+  const ohneMaterial = state.einkauf.filter(i => i.source !== 'material');
+  const schonAufListe = new Set(ohneMaterial.map(i => normKey(i.title)));
+
+  const benoetigt = new Map(); // key -> { title, fuer: [Aufgaben] }
+  anstehend.forEach(a => {
+    materialRegeln.forEach(r => {
+      if (!titelPasstZuRegel(a.title, schluesselwoerterVon(r.ausloeser))) return;
+      const m = r.inhalt.trim();
+      const key = normKey(m);
+      if (istMaterialImVorrat(m)) return;      // vorhanden -> nichts tun
+      if (erledigtTitel.has(key)) return;      // gerade eingekauft/abgehakt
+      if (schonAufListe.has(key)) return;      // steht schon (manuell/Rezept) drauf
+      if (!benoetigt.has(key)) benoetigt.set(key, { title: m, fuer: [] });
+      const eintrag = benoetigt.get(key);
+      if (!eintrag.fuer.includes(a.title)) eintrag.fuer.push(a.title);
+    });
+  });
+
+  const neu = [...benoetigt.values()].map(b => ({
+    id: 'mat_' + normKey(b.title).replace(/\s+/g, '_'),
+    title: b.title,
+    menge: null, einheit: null,
+    kategorie: guessKategorie(b.title),
+    checked: false,
+    source: 'material',
+    fuer: b.fuer.join(', '),
+  }));
+
+  save('einkauf', [...ohneMaterial, ...neu]);
+}
+
+// Folgeaufgaben: werden ausgelöst, sobald eine passende Aufgabe ABGEHAKT
+// wurde (erledigtAm). Jede Folgeaufgabe ist ab "erledigtAm + Versatz" fällig
+// und bleibt sichtbar, bis sie selbst abgehakt ist. Nur Auslöser der letzten
+// REGEL_AUSLOESE_FENSTER_TAGE Tage zählen, damit alte, längst erledigte
+// Google-Tasks keine Folgeaufgaben mehr erzeugen.
+function getFolgeaufgabenFuerHeute() {
+  const heute = today();
+  const grenze = new Date(heute);
+  grenze.setDate(grenze.getDate() - REGEL_AUSLOESE_FENSTER_TAGE);
+  const grenzeStr = toLocalDateStr(grenze);
+
+  const ausloeser = state.aufgaben.filter(a => a.done && a.erledigtAm && a.erledigtAm >= grenzeStr);
+  const folgeRegeln = getRegeln().filter(r => r.typ === 'folge' && r.inhalt);
   const bereitsErledigt = new Set(LS.get('ff_regel_erledigt', []));
 
   const folgeaufgaben = [];
-  AUFGABEN_FOLGEREGELN.forEach(regel => {
-    const ausloeser = gestrigeAufgaben.find(a => titelPasstZuRegel(a.title, regel.schluesselwoerter));
-    if (!ausloeser) return;
-    regel.folgeaufgaben.forEach((titel, i) => {
-      const regelId = `regel-${regel.schluesselwoerter.join('-')}-${i}-${gesternStr}`;
+  ausloeser.forEach(a => {
+    folgeRegeln.forEach(r => {
+      if (!titelPasstZuRegel(a.title, schluesselwoerterVon(r.ausloeser))) return;
+      const f = new Date(a.erledigtAm);
+      f.setDate(f.getDate() + (parseInt(r.versatz, 10) || 0));
+      const faellig = toLocalDateStr(f);
+      if (faellig > heute) return; // noch nicht dran
+
+      const regelId = `regel-${r.id}-${a.id}`;
+      const erledigt = bereitsErledigt.has(regelId);
+      if (erledigt && faellig !== heute) return; // erledigte nur am Fälligkeitstag noch zeigen
+
       folgeaufgaben.push({
         id: regelId,
-        title: titel,
+        title: r.inhalt,
         duration: 0,
-        done: bereitsErledigt.has(regelId),
+        done: erledigt,
         virtuell: true,
         regelBasiert: true,
-        subtitle: `Folge von "${ausloeser.title}"`,
+        date: faellig,
+        subtitle: `Folge von "${a.title}"`,
       });
     });
   });
@@ -2424,8 +2563,12 @@ function renderAufgaben() {
       if (!aufgabe) return;
       const neuerStatus = !aufgabe.done;
 
-      const aufg = state.aufgaben.map(a => a.id === id ? { ...a, done: neuerStatus } : a);
+      // erledigtAm merken -> löst ggf. Folgeaufgaben aus (Regeln)
+      const aufg = state.aufgaben.map(a => a.id === id
+        ? { ...a, done: neuerStatus, erledigtAm: neuerStatus ? today() : null }
+        : a);
       save('aufgaben', aufg);
+      aktualisiereMaterialEinkauf();
       renderAufgaben();
       renderPuffer();
 
@@ -2851,6 +2994,7 @@ function renderEinkauf() {
                 <div class="einkauf-item-body">
                   <span class="einkauf-item-title">${item.title}</span>
                   ${mengeStrFor(item)}
+                  ${item.fuer ? `<span class="einkauf-fuer">für: ${item.fuer}</span>` : ''}
                 </div>
               </div>`).join('')}
           </div>
@@ -3179,6 +3323,74 @@ function renderVorratItem(v) {
     </div>`;
 }
 
+// ── VORSCHLAGS-KATALOG ────────────────────────────────────────
+// Merkt sich alle jemals erfassten Lebensmittel bzw. Geräte/Aufgaben mit
+// ihren zuletzt verwendeten Eigenschaften -- bleibt auch erhalten, wenn ein
+// Artikel gelöscht/aufgebraucht wurde. Dient als Vorschlagsliste und zum
+// Vorausfüllen der Masken.
+const normKey = s => (s || '').trim().toLowerCase();
+
+function merkeVorratImKatalog(v) {
+  if (!v?.title || istBrotEintrag(v)) return;
+  const k = LS.get('ff_vorrat_katalog', {});
+  k[normKey(v.title)] = {
+    title: v.title.trim(),
+    einheit: v.einheit || null,
+    kategorie: v.kategorie || null,
+    lagerort: v.lagerort || '',
+    einzelmenge: v.einzelmenge ?? null,
+  };
+  LS.set('ff_vorrat_katalog', k);
+}
+
+// Alle bekannten Lebensmittel: Katalog + aktueller Vorrat (auch von anderen
+// Nutzern per Sheet) + Zutaten aus Trello-Rezepten (nur Name + Einheit).
+function getVorratKatalog() {
+  const k = { ...LS.get('ff_vorrat_katalog', {}) };
+  const ergaenze = (title, daten) => {
+    const key = normKey(title);
+    if (!key || k[key]) return; // vorhandene (genauere) Einträge nicht überschreiben
+    k[key] = { title: title.trim(), ...daten };
+  };
+  LS.get('ff_vorrat', []).filter(v => !istBrotEintrag(v)).forEach(v =>
+    ergaenze(v.title, { einheit: v.einheit, kategorie: v.kategorie, lagerort: v.lagerort, einzelmenge: v.einzelmenge }));
+
+  const zutaten = [];
+  LS.get('ff_gerichtPool', []).forEach(g => zutaten.push(...(g.zutaten || [])));
+  Object.values(state.essenWoche || {}).forEach(tag =>
+    ['Frühstück','Mittag','Abend','sonstige'].forEach(slot =>
+      (Array.isArray(tag?.[slot]) ? tag[slot] : []).forEach(e => zutaten.push(...(e.zutaten || [])))));
+  zutaten.forEach(z => {
+    if (z?.title && !z.title.toLowerCase().includes('brot')) {
+      ergaenze(z.title, { einheit: z.einheit, kategorie: guessKategorie(z.title), lagerort: '', einzelmenge: null });
+    }
+  });
+  return k;
+}
+
+function merkeWartungImKatalog(w) {
+  if (!w?.geraet || !w?.aufgabe) return;
+  const k = LS.get('ff_wartung_katalog', {});
+  k[normKey(w.geraet) + '|' + normKey(w.aufgabe)] = {
+    geraet: w.geraet.trim(), aufgabe: w.aufgabe.trim(),
+    intervall: w.intervall ?? null, notiz: w.notiz || '',
+  };
+  LS.set('ff_wartung_katalog', k);
+}
+
+function getWartungKatalog() {
+  const k = { ...LS.get('ff_wartung_katalog', {}) };
+  LS.get('ff_wartung', []).forEach(w => {
+    const key = normKey(w.geraet) + '|' + normKey(w.aufgabe);
+    if (w.geraet && w.aufgabe && !k[key]) {
+      k[key] = { geraet: w.geraet, aufgabe: w.aufgabe, intervall: w.intervall ?? null, notiz: w.notiz || '' };
+    }
+  });
+  return Object.values(k);
+}
+
+const escAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
 // ── VORRAT EINGABEMASKE ───────────────────────────────────────
 let _vorratEditId = null; // null = neuer Artikel
 
@@ -3202,10 +3414,28 @@ function openVorratModal(id) {
   // Vorschläge für Lagerort: Standard-Orte + alle bereits genutzten
   const genutzt = LS.get('ff_vorrat', []).map(x => x.lagerort).filter(Boolean);
   const orte = [...new Set([...VORRAT_LAGERORTE, ...genutzt])];
-  document.getElementById('vmLagerortListe').innerHTML = orte.map(o => `<option value="${o}">`).join('');
+  document.getElementById('vmLagerortListe').innerHTML = orte.map(o => `<option value="${escAttr(o)}">`).join('');
+
+  // Vorschläge für Artikel: alle bekannten Lebensmittel, alphabetisch
+  const katalog = Object.values(getVorratKatalog()).sort((a, b) => a.title.localeCompare(b.title, 'de'));
+  document.getElementById('vmArtikelListe').innerHTML = katalog
+    .map(e => `<option value="${escAttr(e.title)}">`).join('');
 
   aktualisiereEingefrorenFeld();
   document.getElementById('vorratModal').classList.add('open');
+}
+
+// Bekannten Artikel gewählt -> Eigenschaften vom letzten Mal vorausfüllen.
+// Nur bei NEUEN Artikeln, damit beim Bearbeiten nichts überschrieben wird.
+function fuelleVorratAusKatalog() {
+  if (_vorratEditId) return;
+  const eintrag = getVorratKatalog()[normKey(document.getElementById('vmArtikel').value)];
+  if (!eintrag) return;
+  if (eintrag.einheit)   document.getElementById('vmEinheit').value = eintrag.einheit;
+  if (eintrag.kategorie) document.getElementById('vmKategorie').value = eintrag.kategorie;
+  if (eintrag.lagerort)  document.getElementById('vmLagerort').value = eintrag.lagerort;
+  if (eintrag.einzelmenge) document.getElementById('vmEinzelmenge').value = eintrag.einzelmenge;
+  aktualisiereEingefrorenFeld();
 }
 
 // "Eingefroren am" nur zeigen, wenn Lagerort = Gefrierschrank
@@ -3218,6 +3448,8 @@ function setupVorratModal() {
   const close = () => document.getElementById('vorratModal').classList.remove('open');
   document.getElementById('vmAbbrechen').addEventListener('click', close);
   document.getElementById('vmLagerort').addEventListener('input', aktualisiereEingefrorenFeld);
+  document.getElementById('vmArtikel').addEventListener('change', fuelleVorratAusKatalog);
+  document.getElementById('vmArtikel').addEventListener('input', fuelleVorratAusKatalog);
 
   // Packungsgröße × Anzahl füllt die Gesamtmenge automatisch vor
   const autoMenge = () => {
@@ -3262,6 +3494,7 @@ function setupVorratModal() {
       ? vorrat.map(x => x.id === _vorratEditId ? eintrag : x)
       : [...vorrat, eintrag];
     LS.set('ff_vorrat', neu);
+    merkeVorratImKatalog(eintrag);
 
     close();
     aktualisiereEinkaufslisteGegenVorrat();
@@ -3405,11 +3638,40 @@ function openWartungModal(id) {
   document.getElementById('wmNotiz').value     = w?.notiz ?? '';
   document.getElementById('wmLoeschen').style.display = w ? '' : 'none';
 
-  const geraete = [...new Set(LS.get('ff_wartung', []).map(x => x.geraet).filter(Boolean))];
-  document.getElementById('wmGeraetListe').innerHTML = geraete.map(g => `<option value="${g}">`).join('');
+  // Vorschläge für Geräte: alle jemals erfassten, alphabetisch
+  const geraete = [...new Set(getWartungKatalog().map(x => x.geraet.trim()))]
+    .sort((a, b) => a.localeCompare(b, 'de'));
+  document.getElementById('wmGeraetListe').innerHTML = geraete.map(g => `<option value="${escAttr(g)}">`).join('');
+  aktualisiereAufgabenVorschlaege();
 
   aktualisiereNaechsteFeld();
   document.getElementById('wartungModal').classList.add('open');
+}
+
+// Aufgaben-Vorschläge passend zum gewählten Gerät zuerst, danach alle
+// anderen bekannten Aufgaben (z.B. "Entkalken" gibt es bei mehreren Geräten).
+function aktualisiereAufgabenVorschlaege() {
+  const geraet = normKey(document.getElementById('wmGeraet').value);
+  const katalog = getWartungKatalog();
+  const passend = katalog.filter(x => normKey(x.geraet) === geraet).map(x => x.aufgabe.trim());
+  const andere  = katalog.filter(x => normKey(x.geraet) !== geraet).map(x => x.aufgabe.trim());
+  const liste = [...new Set([...passend.sort((a,b)=>a.localeCompare(b,'de')), ...andere.sort((a,b)=>a.localeCompare(b,'de'))])];
+  document.getElementById('wmAufgabeListe').innerHTML = liste.map(a => `<option value="${escAttr(a)}">`).join('');
+}
+
+// Bekannte Kombination Gerät + Aufgabe -> Intervall und Notiz vorausfüllen
+// (nur bei neuen Aufgaben und nur in leere Felder).
+function fuelleWartungAusKatalog() {
+  if (_wartungEditId) return;
+  const geraet = normKey(document.getElementById('wmGeraet').value);
+  const aufgabe = normKey(document.getElementById('wmAufgabe').value);
+  const treffer = getWartungKatalog().find(x => normKey(x.geraet) === geraet && normKey(x.aufgabe) === aufgabe);
+  if (!treffer) return;
+  const iv = document.getElementById('wmIntervall');
+  const no = document.getElementById('wmNotiz');
+  if (!iv.value && treffer.intervall) iv.value = treffer.intervall;
+  if (!no.value && treffer.notiz) no.value = treffer.notiz;
+  aktualisiereNaechsteFeld();
 }
 
 // Feste "Nächste Fälligkeit" nur relevant, wenn KEIN Intervall gesetzt ist
@@ -3422,6 +3684,10 @@ function setupWartungModal() {
   const close = () => document.getElementById('wartungModal').classList.remove('open');
   document.getElementById('wmAbbrechen').addEventListener('click', close);
   document.getElementById('wmIntervall').addEventListener('input', aktualisiereNaechsteFeld);
+  document.getElementById('wmGeraet').addEventListener('input', aktualisiereAufgabenVorschlaege);
+  document.getElementById('wmGeraet').addEventListener('change', () => { aktualisiereAufgabenVorschlaege(); fuelleWartungAusKatalog(); });
+  document.getElementById('wmAufgabe').addEventListener('change', fuelleWartungAusKatalog);
+  document.getElementById('wmAufgabe').addEventListener('input', fuelleWartungAusKatalog);
 
   document.getElementById('wmSpeichern').addEventListener('click', () => {
     const geraet = document.getElementById('wmGeraet').value.trim();
@@ -3442,6 +3708,7 @@ function setupWartungModal() {
 
     const liste = LS.get('ff_wartung', []);
     LS.set('ff_wartung', _wartungEditId ? liste.map(x => x.id === _wartungEditId ? eintrag : x) : [...liste, eintrag]);
+    merkeWartungImKatalog(eintrag);
     close();
     schreibeWartungZuSheets();
     renderWartung();
@@ -3459,6 +3726,143 @@ function setupWartungModal() {
   });
 
   document.getElementById('wartungNeuBtn').addEventListener('click', () => openWartungModal(null));
+}
+
+// ── REGELN-KARTE (Familie) ────────────────────────────────────
+const VERSATZ_TEXT = v => {
+  const n = parseInt(v, 10) || 0;
+  return n === 0 ? 'gleicher Tag' : n === 1 ? 'nächster Tag' : `+${n} Tage`;
+};
+
+function renderRegeln() {
+  const wrap = document.getElementById('regelnListe');
+  if (!wrap) return;
+  const regeln = getRegeln();
+  if (!regeln.length) {
+    wrap.innerHTML = '<div class="empty-state">Noch keine Regeln.</div>';
+    return;
+  }
+
+  // nach Auslöser gruppieren
+  const gruppen = {};
+  regeln.forEach(r => {
+    const k = normKey(r.ausloeser);
+    if (!gruppen[k]) gruppen[k] = { titel: r.ausloeser, eintraege: [] };
+    gruppen[k].eintraege.push(r);
+  });
+
+  wrap.innerHTML = Object.values(gruppen)
+    .sort((a, b) => a.titel.localeCompare(b.titel, 'de'))
+    .map(g => {
+      const folge = g.eintraege.filter(r => r.typ === 'folge')
+        .sort((a, b) => (a.versatz || 0) - (b.versatz || 0));
+      const material = g.eintraege.filter(r => r.typ === 'material');
+      const zeile = (r, text, meta) => `
+        <div class="regel-zeile">
+          <span class="regel-text">${text}</span>
+          ${meta ? `<span class="regel-meta">${meta}</span>` : ''}
+          <button class="vorrat-edit-btn regel-edit-btn" data-rid="${r.id}" title="Bearbeiten">✎</button>
+        </div>`;
+      return `
+        <div class="regel-gruppe">
+          <div class="regel-ausloeser">Wenn „${g.titel}" erledigt</div>
+          ${folge.map(r => zeile(r, '→ ' + r.inhalt, VERSATZ_TEXT(r.versatz))).join('')}
+          ${material.map(r => zeile(r, '🛒 ' + r.inhalt, 'Material')).join('')}
+        </div>`;
+    }).join('');
+
+  wrap.querySelectorAll('.regel-edit-btn').forEach(b =>
+    b.addEventListener('click', () => openRegelModal(b.dataset.rid)));
+}
+
+let _regelEditId = null;
+
+function openRegelModal(id, vorbelegung = {}) {
+  _regelEditId = id || null;
+  const r = id ? getRegeln().find(x => x.id === id) : null;
+
+  document.getElementById('regelModalTitel').textContent = r ? 'Regel bearbeiten' : 'Regel anlegen';
+  document.getElementById('rmAusloeser').value = r?.ausloeser ?? vorbelegung.ausloeser ?? '';
+  document.getElementById('rmTyp').value       = r?.typ ?? 'folge';
+  document.getElementById('rmInhalt').value    = r?.inhalt ?? '';
+
+  // Versatz: ggf. eigenen Wert (z.B. 5) als Option ergänzen
+  const vs = document.getElementById('rmVersatz');
+  const v = String(r?.versatz ?? 1);
+  if (![...vs.options].some(o => o.value === v)) {
+    vs.insertAdjacentHTML('beforeend', `<option value="${v}">+${v} Tage</option>`);
+  }
+  vs.value = v;
+
+  document.getElementById('rmLoeschen').style.display = r ? '' : 'none';
+
+  // Auslöser-Vorschläge: bestehende Auslöser + Titel vorhandener Aufgaben
+  const ausloeser = [...new Set([
+    ...getRegeln().map(x => x.ausloeser.trim()),
+    ...state.aufgaben.map(a => (a.title || '').trim().toLowerCase()).filter(Boolean),
+  ])].sort((a, b) => a.localeCompare(b, 'de'));
+  document.getElementById('rmAusloeserListe').innerHTML = ausloeser.map(a => `<option value="${escAttr(a)}">`).join('');
+
+  aktualisiereRegelTyp();
+  document.getElementById('regelModal').classList.add('open');
+}
+
+// Feldbeschriftung, Vorschläge und Versatz passend zum Typ umschalten
+function aktualisiereRegelTyp() {
+  const typ = document.getElementById('rmTyp').value;
+  const istMaterial = typ === 'material';
+  document.getElementById('rmInhaltLabel').textContent = istMaterial ? 'Material' : 'Folgeaufgabe';
+  document.getElementById('rmInhalt').placeholder = istMaterial ? 'z.B. Badreiniger' : 'z.B. Trockner starten';
+  document.getElementById('rmVersatzWrap').style.display = istMaterial ? 'none' : '';
+
+  const vorschlaege = istMaterial
+    ? Object.values(getVorratKatalog()).map(e => e.title)
+    : getRegeln().filter(r => r.typ === 'folge').map(r => r.inhalt);
+  document.getElementById('rmInhaltListe').innerHTML = [...new Set(vorschlaege)]
+    .sort((a, b) => a.localeCompare(b, 'de'))
+    .map(x => `<option value="${escAttr(x)}">`).join('');
+}
+
+// Nach jeder Regeländerung: speichern, ins Sheet schreiben, alles neu bewerten
+function regelnGeaendert(neueListe, meldung) {
+  LS.set('ff_regeln', neueListe);
+  schreibeRegelnZuSheets();
+  aktualisiereMaterialEinkauf();
+  renderRegeln();
+  refreshAllViews();
+  showToast(meldung);
+}
+
+function setupRegelModal() {
+  const close = () => document.getElementById('regelModal').classList.remove('open');
+  document.getElementById('rmAbbrechen').addEventListener('click', close);
+  document.getElementById('rmTyp').addEventListener('change', aktualisiereRegelTyp);
+
+  document.getElementById('rmSpeichern').addEventListener('click', () => {
+    const ausloeser = document.getElementById('rmAusloeser').value.trim();
+    const inhalt = document.getElementById('rmInhalt').value.trim();
+    const typ = document.getElementById('rmTyp').value;
+    if (!ausloeser || !inhalt) { showToast('Bitte Auslöser und Inhalt angeben.'); return; }
+
+    const eintrag = {
+      id: _regelEditId || ('rg_' + uid()),
+      ausloeser, typ, inhalt,
+      versatz: typ === 'folge' ? (parseInt(document.getElementById('rmVersatz').value, 10) || 0) : null,
+    };
+    const liste = getRegeln();
+    const neu = _regelEditId ? liste.map(x => x.id === _regelEditId ? eintrag : x) : [...liste, eintrag];
+    close();
+    regelnGeaendert(neu, _regelEditId ? 'Regel gespeichert ✓' : 'Regel angelegt ✓');
+  });
+
+  document.getElementById('rmLoeschen').addEventListener('click', () => {
+    if (!_regelEditId) return;
+    if (!confirm('Regel endgültig löschen?')) return;
+    close();
+    regelnGeaendert(getRegeln().filter(x => x.id !== _regelEditId), 'Regel gelöscht ✓');
+  });
+
+  document.getElementById('regelNeuBtn').addEventListener('click', () => openRegelModal(null));
 }
 
 function renderFamilie() {
@@ -3496,6 +3900,7 @@ function renderFamilie() {
   document.getElementById('calDebugBtn').onclick = debugGoogleCalendar;
 
   renderBrotvorrat();
+  renderRegeln();
 }
 
 // Zeigt den aktuellen Brotvorrat-Status und verdrahtet den
@@ -4158,6 +4563,7 @@ function init() {
   setupSheetsModal();
   setupVorratModal();
   setupWartungModal();
+  setupRegelModal();
   setupVorschlagModal();
   setupGerichtAuswahlModal();
   registerServiceWorker();
@@ -4396,6 +4802,8 @@ async function syncGoogleTasks() {
         title: t.title || '(Ohne Titel)',
         duration: 0,
         done: t.status === 'completed',
+        // Google liefert den Erledigt-Zeitpunkt mit -> Auslöser für Folgeaufgaben
+        erledigtAm: t.completed ? toLocalDateStr(new Date(t.completed)) : null,
         source: 'google',
         date: dueDate, // null = kein Fälligkeitsdatum gesetzt
       };
@@ -4403,6 +4811,7 @@ async function syncGoogleTasks() {
 
     const manual = state.aufgaben.filter(a => a.source !== 'google');
     save('aufgaben', [...manual, ...gTasks]);
+    aktualisiereMaterialEinkauf(); // neue/erledigte Aufgaben -> Materialbedarf neu prüfen
   } catch (err) {
     console.error('Google Tasks Sync Fehler:', err);
     showToast('Aufgaben-Sync fehlgeschlagen.');
@@ -4500,9 +4909,34 @@ async function ermittleTabName(spreadsheetId, bevorzugt) {
   const titel = (data.sheets || []).map(s => s.properties.title);
   if (!titel.length) throw new Error('Spreadsheet hat keine Tabs.');
 
-  const treffer = titel.find(t => t.trim().toLowerCase() === bevorzugt.toLowerCase()) || titel[0];
-  _tabNameCache[cacheKey] = treffer;
-  return treffer;
+  const exakt = titel.find(t => t.trim().toLowerCase() === bevorzugt.toLowerCase());
+  if (exakt) { _tabNameCache[cacheKey] = exakt; return exakt; }
+
+  // "Regeln" ist ein fester Zusatz-Tab: NIE auf einen anderen Tab ausweichen
+  // (sonst würden die Wartungsdaten überschrieben), sondern neu anlegen.
+  if (TABS_NUR_EXAKT.includes(bevorzugt)) {
+    await legeSheetTabAn(spreadsheetId, bevorzugt);
+    _tabNameCache[cacheKey] = bevorzugt;
+    return bevorzugt;
+  }
+
+  // Rückfall auf den ersten Tab -- aber nie auf einen der festen Zusatz-Tabs
+  const reserviert = TABS_NUR_EXAKT.map(t => t.toLowerCase());
+  const rueckfall = titel.find(t => !reserviert.includes(t.trim().toLowerCase())) || titel[0];
+  _tabNameCache[cacheKey] = rueckfall;
+  return rueckfall;
+}
+
+const TABS_NUR_EXAKT = ['Regeln'];
+
+async function legeSheetTabAn(spreadsheetId, titel) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${googleAccessToken.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title: titel } } }] }),
+  });
+  if (!res.ok) throw new Error(`Tab "${titel}" konnte nicht angelegt werden: ${res.status}`);
 }
 
 // Tab-Namen mit Leerzeichen/Sonderzeichen müssen in A1-Notation in
@@ -4631,6 +5065,7 @@ async function ladeVorratVonSheets() {
     const datenZeilen = rows.slice(1); // erste Zeile ist die Kopfzeile
     const vorrat = datenZeilen.map(zeileZuVorratItem).filter(Boolean);
     LS.set('ff_vorrat', vorrat);
+    vorrat.forEach(merkeVorratImKatalog);
 
     const brot = vorrat.find(istBrotEintrag);
     if (brot) {
@@ -4686,6 +5121,7 @@ async function ladeWartungVonSheets() {
     const datenZeilen = rows.slice(1);
     const wartung = datenZeilen.map(zeileZuWartungItem).filter(Boolean);
     LS.set('ff_wartung', wartung);
+    wartung.forEach(merkeWartungImKatalog);
   } catch (err) {
     console.error('Wartung von Sheets laden fehlgeschlagen:', err);
     showToast('Wartung konnte nicht von Sheets geladen werden.');
@@ -4702,12 +5138,65 @@ async function schreibeWartungZuSheets() {
   }
 }
 
+// ── REGELN ↔ SHEETS (Tab "Regeln" im Wartung-Sheet) ───────────
+const REGELN_SHEET_SPALTEN = ['ID','Auslöser','Typ','Inhalt','Versatz','ZuletztGeändert'];
+
+function regelZuZeile(r) {
+  return [
+    r.id, r.ausloeser, r.typ === 'material' ? 'Material' : 'Folgeaufgabe',
+    r.inhalt, r.typ === 'folge' ? (r.versatz ?? 0) : '', new Date().toISOString(),
+  ];
+}
+function zeileZuRegel(z) {
+  const [id, ausloeser, typ, inhalt, versatz] = z;
+  if (!ausloeser || !inhalt) return null;
+  const istMaterial = String(typ || '').trim().toLowerCase().startsWith('mat');
+  return {
+    id: id || ('rg_' + uid()),
+    ausloeser: String(ausloeser).trim(),
+    typ: istMaterial ? 'material' : 'folge',
+    inhalt: String(inhalt).trim(),
+    versatz: istMaterial ? null : (parseInt(versatz, 10) || 0),
+  };
+}
+
+async function ladeRegelnVonSheets() {
+  try {
+    const rows = await ladeSheetTab('wartung', 'Regeln');
+    if (rows === null) return;
+    const regeln = rows.slice(1).map(zeileZuRegel).filter(Boolean);
+    if (!regeln.length) {
+      // Tab neu/leer: bisherige Regeln (lokal oder Standard) einmalig übernehmen
+      LS.set('ff_regeln', getRegeln());
+      await schreibeRegelnZuSheets();
+      return;
+    }
+    LS.set('ff_regeln', regeln);
+  } catch (err) {
+    console.error('Regeln von Sheets laden fehlgeschlagen:', err);
+    showToast('Regeln konnten nicht von Sheets geladen werden.');
+  }
+}
+
+async function schreibeRegelnZuSheets() {
+  if (!isSheetsConnected('wartung')) return;
+  try {
+    await schreibeSheetTab('wartung', 'Regeln', REGELN_SHEET_SPALTEN, getRegeln().map(regelZuZeile));
+  } catch (err) {
+    console.error('Regeln zu Sheets schreiben fehlgeschlagen:', err);
+    showToast('Regeln konnten nicht in Sheets gespeichert werden.');
+  }
+}
+
 // Lädt beim Verbinden/App-Start BEIDE Tabs einmalig.
 async function syncSheets() {
   if (!isSheetsConnected()) return;
   const jobs = [];
   if (isSheetsConnected('vorrat'))  jobs.push(ladeVorratVonSheets());
-  if (isSheetsConnected('wartung')) jobs.push(ladeWartungVonSheets());
+  if (isSheetsConnected('wartung')) {
+    // Wartung zuerst, danach Regeln (legt ggf. den Tab "Regeln" an)
+    jobs.push(ladeWartungVonSheets().then(ladeRegelnVonSheets));
+  }
   await Promise.all(jobs);
 }
 
@@ -4971,7 +5460,7 @@ function berechneVorratAbgleich(bedarfProZutatMap) {
 // damit die Liste sofort aktuell ist statt erst beim nächsten Trello-Sync.
 function aktualisiereEinkaufslisteGegenVorrat() {
   const bedarfListe = LS.get('ff_wochenbedarf_cache', []);
-  if (!bedarfListe.length) return; // noch nie gesynct -> nichts abzugleichen
+  if (!bedarfListe.length) { aktualisiereMaterialEinkauf(); return; } // kein Rezeptbedarf, Materialien trotzdem prüfen
 
   const bedarfProZutat = new Map();
   bedarfListe.forEach(z => {
@@ -4994,6 +5483,7 @@ function aktualisiereEinkaufslisteGegenVorrat() {
     kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
   }));
   save('einkauf', dedupeEinkauf([...behalten, ...neueItems]));
+  aktualisiereMaterialEinkauf();
 }
 
 async function syncTrello() {
@@ -5136,6 +5626,7 @@ async function syncTrello() {
       kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
     }));
     save('einkauf', dedupeEinkauf([...behalten, ...neueItems]));
+    aktualisiereMaterialEinkauf();
 
     // Separates Vorrat-Board (falls konfiguriert) unabhängig synchronisieren
 
