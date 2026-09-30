@@ -965,6 +965,8 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   white-space: nowrap;
 }
 .connect-btn:active { background: var(--green); }
+.connect-btn-gruppe { display: flex; gap: 6px; flex-shrink: 0; }
+.connect-btn.secondary { background: var(--cream); color: var(--forest); padding: 9px 13px; }
 
 .brotvorrat-status { margin-bottom: 14px; }
 .brotvorrat-bestand {
@@ -1120,21 +1122,26 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   padding-bottom: env(safe-area-inset-bottom);
 }
 .nav-btn {
+  flex: 1 1 0;              /* 7 Buttons teilen sich die Breite gleichmäßig */
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 6px 6px;
+  padding: 6px 2px;
   border-radius: 12px;
   transition: background 0.15s;
-  min-width: 44px;
+  min-width: 0;
 }
 .nav-btn:active { background: var(--cream); }
-.nav-icon { font-size: 1.2rem; line-height: 1; }
+.nav-icon { font-size: 1.15rem; line-height: 1; }
 .nav-label {
-  font-size: 0.58rem;
+  font-size: 0.55rem;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
   color: var(--muted);
   transition: color 0.15s;
 }
@@ -1192,6 +1199,8 @@ body.widget-mode .puffer-breakdown { display: none; }
   padding: 24px;
   width: 100%;
   max-width: 400px;
+  max-height: 88vh;
+  overflow-y: auto;
   box-shadow: 0 12px 40px rgba(0,0,0,0.25);
 }
 .modal-title {
@@ -1235,6 +1244,40 @@ body.widget-mode .puffer-breakdown { display: none; }
 .modal-btn:active { opacity: 0.8; }
 .modal-btn.secondary { background: var(--cream); color: var(--muted); }
 .modal-btn.primary { background: var(--forest); color: var(--cream); }
+.modal-btn.danger { background: rgba(184,64,64,0.12); color: var(--status-red); flex: 0 0 auto; padding: 12px 14px; }
+.modal-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 4px 0 4px 2px;
+}
+.modal-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+select.modal-input { background: #fff; }
+.modal-check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.85rem; color: var(--ink); margin: 6px 0 4px;
+}
+.modal-check input { width: 18px; height: 18px; accent-color: var(--green); }
+
+.view-header-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.vorrat-kopf-rechts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.vorrat-edit-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--cream); color: var(--muted);
+  font-size: 0.85rem; flex-shrink: 0;
+}
+.vorrat-edit-btn:active { background: var(--cream-dim); }
+.wartung-meta { font-size: 0.78rem; color: var(--muted); margin-top: -2px; }
+.wartung-erledigt-btn {
+  margin-top: 10px; width: 100%; padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--cream); color: var(--forest);
+  font-size: 0.85rem; font-weight: 700;
+}
+.wartung-erledigt-btn:active { background: var(--green); color: #fff; }
 
 /* ===== TOAST ===== */
 .ff-toast {
@@ -1382,11 +1425,6 @@ body.widget-mode .puffer-breakdown { display: none; }
         <button class="vorschlag-btn" id="vorschlagBtn">✨ Vorschläge erstellen</button>
       </div>
       <div id="essenWoche"></div>
-
-      <div class="card kuehltruhe-card">
-        <div class="card-label">🧊 Kühltruhe</div>
-        <div id="kuehltrucheListe"></div>
-      </div>
     </section>
 
     <!-- VIEW: EINKAUF -->
@@ -1439,6 +1477,34 @@ body.widget-mode .puffer-breakdown { display: none; }
           </div>
           <button class="connect-btn" id="trelloConnectBtn">Einrichten</button>
         </div>
+
+        <!-- Google Sheets: Vorrat + Wartung -->
+        <div class="connect-row">
+          <div class="connect-info">
+            <div class="connect-name">📊 Google Sheets (Vorrat &amp; Wartung)</div>
+            <div class="connect-status" id="sheetsStatus">Nicht verbunden</div>
+          </div>
+          <div class="connect-btn-gruppe">
+            <button class="connect-btn secondary" id="sheetsReloadBtn" style="display:none;" title="Neu aus Sheets laden">↻</button>
+            <button class="connect-btn" id="sheetsConnectBtn">Einrichten</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SHEETS SETUP MODAL -->
+      <div class="modal-overlay" id="sheetsModal">
+        <div class="modal-box">
+          <div class="modal-title">Google Sheets verbinden</div>
+          <p class="modal-hint">Den Link des jeweiligen Sheets einfügen (oder nur die ID zwischen /d/ und /edit). Heißt der Tab nicht "Vorrat" bzw. "Wartung", wird automatisch der erste Tab genutzt.</p>
+          <label class="modal-label">📦 Vorrat-Sheet</label>
+          <input class="modal-input" id="sheetsVorratInput" placeholder="Link oder ID" />
+          <label class="modal-label">🔧 Wartung-Sheet</label>
+          <input class="modal-input" id="sheetsWartungInput" placeholder="Link oder ID" />
+          <div class="modal-actions">
+            <button class="modal-btn secondary" id="sheetsModalCancel">Abbrechen</button>
+            <button class="modal-btn primary" id="sheetsModalSave">Speichern &amp; Laden</button>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -1487,8 +1553,20 @@ body.widget-mode .puffer-breakdown { display: none; }
 
     <!-- VIEW: VORRAT -->
     <section class="view" id="view-vorrat">
-      <div class="view-header">Vorrat</div>
+      <div class="view-header-row">
+        <div class="view-header">Vorrat</div>
+        <button class="vorschlag-btn" id="vorratNeuBtn">+ Artikel</button>
+      </div>
       <div id="vorratListe"></div>
+    </section>
+
+    <!-- VIEW: WARTUNG -->
+    <section class="view" id="view-wartung">
+      <div class="view-header-row">
+        <div class="view-header">Wartung</div>
+        <button class="vorschlag-btn" id="wartungNeuBtn">+ Aufgabe</button>
+      </div>
+      <div id="wartungListe"></div>
     </section>
 
     <!-- TRELLO SETUP MODAL -->
@@ -1499,8 +1577,6 @@ body.widget-mode .puffer-breakdown { display: none; }
         <input class="modal-input" id="trelloApiKeyInput" placeholder="API Key" />
         <input class="modal-input" id="trelloTokenInput" placeholder="Token" />
         <input class="modal-input" id="trelloBoardInput" placeholder="Board-ID oder Trello-Link" />
-        <p class="modal-hint" style="margin-top:2px;">Optional: separates Board für den Vorrat (leer lassen, falls Vorrat im selben Board liegt).</p>
-        <input class="modal-input" id="trelloVorratBoardInput" placeholder="Vorrat-Board-ID oder Link (optional)" />
         <div class="modal-actions">
           <button class="modal-btn secondary" id="trelloModalCancel">Abbrechen</button>
           <button class="modal-btn primary" id="trelloModalSave">Speichern &amp; Sync</button>
@@ -1517,6 +1593,89 @@ body.widget-mode .puffer-breakdown { display: none; }
         <div class="modal-actions" style="margin-top:16px;">
           <button class="modal-btn secondary" id="vorschlagAbbrechen">Abbrechen</button>
           <button class="modal-btn primary" id="vorschlagUebernehmen">Übernehmen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VORRAT EINGABE MODAL -->
+    <div class="modal-overlay" id="vorratModal">
+      <div class="modal-box">
+        <div class="modal-title" id="vorratModalTitel">Artikel anlegen</div>
+        <label class="modal-label">Artikel</label>
+        <input class="modal-input" id="vmArtikel" placeholder="z.B. Haferflocken" />
+        <div class="modal-grid2">
+          <div>
+            <label class="modal-label">Menge (gesamt)</label>
+            <input class="modal-input" id="vmMenge" type="number" step="any" min="0" placeholder="z.B. 1500" />
+          </div>
+          <div>
+            <label class="modal-label">Einheit</label>
+            <select class="modal-input" id="vmEinheit">
+              <option value="g">g</option><option value="kg">kg</option>
+              <option value="ml">ml</option><option value="l">l</option>
+              <option value="st">Stück</option><option value="pck">Packung</option>
+              <option value="scheibe">Scheibe</option><option value="bund">Bund</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-grid2">
+          <div>
+            <label class="modal-label">Packungsgröße (optional)</label>
+            <input class="modal-input" id="vmEinzelmenge" type="number" step="any" min="0" placeholder="z.B. 500" />
+          </div>
+          <div>
+            <label class="modal-label">Anzahl Packungen</label>
+            <input class="modal-input" id="vmAnzahl" type="number" step="1" min="0" placeholder="z.B. 3" />
+          </div>
+        </div>
+        <label class="modal-label">Kategorie</label>
+        <select class="modal-input" id="vmKategorie">
+          <option>Obst & Gemüse</option><option>Fleisch & Wurst</option>
+          <option>Milchprodukte</option><option>Backwaren</option>
+          <option selected>Vorrat</option><option>Drogerie</option>
+          <option>Haushalt</option><option>Sonstiges</option>
+        </select>
+        <label class="modal-label">Lagerort</label>
+        <input class="modal-input" id="vmLagerort" list="vmLagerortListe" placeholder="z.B. Keller" />
+        <datalist id="vmLagerortListe"></datalist>
+        <div id="vmEingefrorenWrap" style="display:none;">
+          <label class="modal-label">❄️ Eingefroren am</label>
+          <input class="modal-input" id="vmEingefroren" type="date" />
+        </div>
+        <label class="modal-label">Ablaufdatum (MHD, optional)</label>
+        <input class="modal-input" id="vmMhd" type="date" />
+        <label class="modal-check"><input type="checkbox" id="vmIstRest" /> Reste (sollen bald aufgegessen werden)</label>
+        <div class="modal-actions">
+          <button class="modal-btn danger" id="vmLoeschen" style="display:none;">Löschen</button>
+          <button class="modal-btn secondary" id="vmAbbrechen">Abbrechen</button>
+          <button class="modal-btn primary" id="vmSpeichern">Speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- WARTUNG EINGABE MODAL -->
+    <div class="modal-overlay" id="wartungModal">
+      <div class="modal-box">
+        <div class="modal-title" id="wartungModalTitel">Wartungsaufgabe anlegen</div>
+        <label class="modal-label">Gerät</label>
+        <input class="modal-input" id="wmGeraet" list="wmGeraetListe" placeholder="z.B. Kaffeemaschine" />
+        <datalist id="wmGeraetListe"></datalist>
+        <label class="modal-label">Aufgabe</label>
+        <input class="modal-input" id="wmAufgabe" placeholder="z.B. Entkalken" />
+        <label class="modal-label">Intervall in Tagen (leer = fester Termin)</label>
+        <input class="modal-input" id="wmIntervall" type="number" step="1" min="1" placeholder="z.B. 90" />
+        <label class="modal-label">Zuletzt erledigt</label>
+        <input class="modal-input" id="wmZuletzt" type="date" />
+        <div id="wmNaechsteWrap">
+          <label class="modal-label">Nächste Fälligkeit (nur ohne Intervall)</label>
+          <input class="modal-input" id="wmNaechste" type="date" />
+        </div>
+        <label class="modal-label">Notiz (optional)</label>
+        <input class="modal-input" id="wmNotiz" placeholder="z.B. Filter Typ WPF200" />
+        <div class="modal-actions">
+          <button class="modal-btn danger" id="wmLoeschen" style="display:none;">Löschen</button>
+          <button class="modal-btn secondary" id="wmAbbrechen">Abbrechen</button>
+          <button class="modal-btn primary" id="wmSpeichern">Speichern</button>
         </div>
       </div>
     </div>
@@ -1559,6 +1718,10 @@ body.widget-mode .puffer-breakdown { display: none; }
     <button class="nav-btn" data-view="vorrat">
       <span class="nav-icon">📦</span>
       <span class="nav-label">Vorrat</span>
+    </button>
+    <button class="nav-btn" data-view="wartung">
+      <span class="nav-icon">🔧</span>
+      <span class="nav-label">Wartung</span>
     </button>
   </nav>
 
@@ -2201,6 +2364,19 @@ function renderAufgaben() {
   // "Wäsche waschen" gestern)
   heutigeAufgaben.push(...getFolgeaufgabenFuerHeute());
 
+  // Fällige/überfällige Wartungen als virtuelle Aufgaben einblenden
+  getWartungMitStatus()
+    .filter(w => w.tageBis !== null && w.tageBis <= 0)
+    .forEach(w => heutigeAufgaben.push({
+      id: 'wartung-' + w.id,
+      title: `🔧 ${w.geraet}: ${w.aufgabe}`,
+      duration: 0,
+      done: false,
+      virtuell: true,
+      wartungId: w.id,
+      date: w.naechsteFaelligkeit,
+    }));
+
   // Virtuelle Aufgabe "Brot backen" einfügen, falls Vorrat knapp wird.
   // Wird NICHT in state.aufgaben gespeichert -- ist reine Anzeige-Logik,
   // die sich jedes Mal aus dem aktuellen Vorrat + Wochenplan neu ergibt.
@@ -2229,7 +2405,7 @@ function renderAufgaben() {
       : '';
     return `
     <li class="aufgabe-item">
-      <div class="aufgabe-check ${a.done ? 'done' : ''} ${a.virtuell ? 'virtuell' : ''}" data-id="${a.id}" ${a.regelBasiert ? `data-regel-id="${a.id}"` : ''}>
+      <div class="aufgabe-check ${a.done ? 'done' : ''} ${a.virtuell ? 'virtuell' : ''}" data-id="${a.id}" ${a.regelBasiert ? `data-regel-id="${a.id}"` : ''} ${a.wartungId ? `data-wartung-id="${a.wartungId}"` : ''}>
         ${a.done ? '✓' : ''}
       </div>
       <div class="aufgabe-body">
@@ -2268,6 +2444,12 @@ function renderAufgaben() {
       setTimeout(() => document.getElementById('brotBackenBtn')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
     });
   }
+
+  // Klick auf eine fällige Wartung markiert sie direkt als erledigt
+  // (schreibt zuletztErledigt=heute ins Sheet, nächste Fälligkeit rückt weiter).
+  list.querySelectorAll('.aufgabe-check[data-wartung-id]').forEach(el => {
+    el.addEventListener('click', () => wartungErledigt(el.dataset.wartungId));
+  });
 
   // Klick auf eine Regel-Folgeaufgabe (z.B. "Wäsche abnehmen") markiert sie
   // lokal als erledigt -- bleibt über Reload hinweg bestehen, damit sie
@@ -2487,18 +2669,26 @@ function renderEssenView() {
           const gericht = pool.find(g => g.id === entry.poolId);
           zutatenListe = gericht?.zutaten;
         }
+        let vorratGeaendert = false;
         if (zutatenListe?.length) {
           zutatenListe.forEach(z => verbraucheAusVorrat(z.title, z.menge, z.einheit));
+          vorratGeaendert = true;
           aktualisiereEinkaufslisteGegenVorrat();
           renderBrotvorrat();
         }
 
         if (entry.poolId) markAsEaten(entry.poolId);
+        // Eingefrorenes Gericht aus dem Gefrierschrank gegessen -> Vorrat-
+        // Eintrag entfernen (kuehltrucheId verweist jetzt auf die Vorrat-ID).
         if (entry.kuehltrucheId) {
-          const updated = LS.get('ff_kuehltruhe', []).filter(k => k.id !== entry.kuehltrucheId);
-          LS.set('ff_kuehltruhe', updated);
-          renderKuehltruhe();
+          const updated = LS.get('ff_vorrat', []).filter(v => v.id !== entry.kuehltrucheId);
+          LS.set('ff_vorrat', updated);
+          vorratGeaendert = true;
         }
+
+        // Knackpunkt gelöst: Vorrat-Änderung SOFORT persistent ins Sheet
+        // schreiben, statt nur lokal zu reduzieren.
+        if (vorratGeaendert) schreibeVorratZuSheets();
 
         // Als erledigt markieren -- persistent, bleibt nach Reload erhalten
         slotArr[idx] = { ...entry, gegessen: true };
@@ -2520,53 +2710,9 @@ function renderEssenView() {
   renderKuehltruhe();
 }
 
-// Zeigt die Kühltruhe-Einträge sortiert nach Alter (ältestes zuerst),
-// mit Tagen seit dem Einfrieren und Button zum manuellen Entfernen.
-function renderKuehltruhe() {
-  const wrap = document.getElementById('kuehltrucheListe');
-  if (!wrap) return;
-
-  const kuehltruhe = LS.get('ff_kuehltruhe', []);
-
-  if (!kuehltruhe.length) {
-    wrap.innerHTML = '<div class="empty-state">Nichts eingefroren.</div>';
-    return;
-  }
-
-  const sorted = [...kuehltruhe].sort((a, b) =>
-    new Date(a.eingefrorenAm) - new Date(b.eingefrorenAm)
-  );
-
-  const heute = new Date(today());
-
-  wrap.innerHTML = sorted.map(k => {
-    const eingefroren = new Date(k.eingefrorenAm);
-    const tageAlt = Math.round((heute - eingefroren) / (1000 * 60 * 60 * 24));
-    const altHint = tageAlt === 0 ? 'heute eingefroren' : `vor ${tageAlt} Tag${tageAlt === 1 ? '' : 'en'}`;
-    const warnung = tageAlt >= 14 ? ' kuehltruhe-alt' : '';
-    const tagBadges = (k.tags || []).map(t => `<span class="essen-tag">${t}</span>`).join('');
-
-    return `
-      <div class="kuehltruhe-item${warnung}" data-ktid="${k.id}">
-        <div class="kuehltruhe-item-info">
-          <span class="kuehltruhe-item-titel">${k.title}</span>
-          <span class="kuehltruhe-item-alter">${altHint}</span>
-          ${tagBadges}
-        </div>
-        <button class="kuehltruhe-entfernen-btn" data-ktid="${k.id}" title="Als aufgebraucht markieren">✓</button>
-      </div>`;
-  }).join('');
-
-  wrap.querySelectorAll('.kuehltruhe-entfernen-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.ktid;
-      const updated = LS.get('ff_kuehltruhe', []).filter(k => k.id !== id);
-      LS.set('ff_kuehltruhe', updated);
-      showToast('Als aufgebraucht markiert ✓');
-      renderKuehltruhe();
-    });
-  });
-}
+// Kühltruhe ist jetzt Teil des Vorrats (Lagerort "Gefrierschrank") und wird
+// in der Vorrat-Ansicht dargestellt -- keine separate Karte mehr.
+function renderKuehltruhe() {}
 
 // Aktueller Vorschlag zwischenspeichern, damit "Übernehmen" ihn kennt
 let _aktuellerVorschlag = null;
@@ -2793,7 +2939,8 @@ const VORRAT_MHD_WARNUNG_TAGE = 3;
 const RESTE_WARNUNG_TAGE = 2;
 
 function getVorratMitStatus() {
-  const vorrat = LS.get('ff_vorrat', []);
+  // Brot hat eine eigene Karte (Prognose, Backen-Aufgabe) -> hier ausblenden
+  const vorrat = LS.get('ff_vorrat', []).filter(v => !istBrotEintrag(v));
   const heute = new Date(today());
 
   return vorrat.map(v => {
@@ -2816,7 +2963,16 @@ function getVorratMitStatus() {
       resteMussWeg = tageAlt >= RESTE_WARNUNG_TAGE;
     }
 
-    return { ...v, tageBisMHD, istKritisch, istAbgelaufen, tageAlt, resteMussWeg };
+    // Gefrierschrank: angelegtAm = "eingefroren am", Warnung ab 14 Tagen
+    // (übernimmt die frühere Kühltruhe-Logik).
+    let tageEingefroren = null;
+    let gefrierAlt = false;
+    if (istGefrierschrank(v.lagerort) && v.angelegtAm) {
+      tageEingefroren = Math.round((heute - new Date(v.angelegtAm)) / (1000 * 60 * 60 * 24));
+      gefrierAlt = tageEingefroren >= KUEHLTRUHE_PRIORITAET_TAGE;
+    }
+
+    return { ...v, tageBisMHD, istKritisch, istAbgelaufen, tageAlt, resteMussWeg, tageEingefroren, gefrierAlt };
   }).sort((a, b) => {
     // Kein MHD ans Ende, sonst nach verbleibenden Tagen aufsteigend (knappstes zuerst)
     if (a.mhd === null && b.mhd === null) return a.title.localeCompare(b.title);
@@ -2831,7 +2987,9 @@ function renderVorrat() {
   const vorrat = getVorratMitStatus();
 
   if (!vorrat.length) {
-    wrap.innerHTML = '<div class="empty-state">Noch kein Vorrat hinterlegt. Lege in Trello die Listen "Keller" und/oder "Kühlschrank" an.</div>';
+    wrap.innerHTML = isSheetsConnected()
+      ? '<div class="empty-state">Noch kein Vorrat hinterlegt. Über "+ Artikel" anlegen.</div>'
+      : '<div class="empty-state">Google Sheets noch nicht verbunden (Familie → Verbindungen).</div>';
     return;
   }
 
@@ -2844,7 +3002,7 @@ function renderVorrat() {
   normal.forEach(v => {
     const ort = v.lagerort || 'Sonstiger Lagerort';
     if (!nachOrt[ort]) nachOrt[ort] = {};
-    const kat = resolveKat(guessKategorie(v.title));
+    const kat = resolveKat(v.kategorie || guessKategorie(v.title));
     if (!nachOrt[ort][kat]) nachOrt[ort][kat] = [];
     nachOrt[ort][kat].push(v);
   });
@@ -2857,8 +3015,12 @@ function renderVorrat() {
   });
 
   const alleOrte = new Set([...Object.keys(nachOrt), ...Object.keys(resteNachOrt)]);
-  const ortReihenfolge = [...VORRAT_LAGERORTE, 'Sonstiger Lagerort'].filter(o => alleOrte.has(o));
-  const ORT_ICONS = { Keller: '🧺', Kühlschrank: '🧊' };
+  // Bekannte Lagerorte zuerst in fester Reihenfolge, frei ergänzte danach
+  const ortReihenfolge = [
+    ...VORRAT_LAGERORTE.filter(o => alleOrte.has(o)),
+    ...[...alleOrte].filter(o => !VORRAT_LAGERORTE.includes(o)).sort(),
+  ];
+  const ORT_ICONS = { Keller: '🧺', Kühlschrank: '🧊', Gefrierschrank: '❄️', Speisekammer: '🥫' };
 
   wrap.innerHTML = ortReihenfolge.map(ort => {
     const resteHtml = resteNachOrt[ort]?.length
@@ -2906,6 +3068,7 @@ function renderVorrat() {
 
       LS.set('ff_vorrat', updated);
       aktualisiereEinkaufslisteGegenVorrat(); // Einkaufsliste sofort neu abgleichen
+      schreibeVorratZuSheets();               // sofort persistent ins Sheet
       renderVorrat();
     });
   });
@@ -2935,9 +3098,13 @@ function renderVorrat() {
 
       LS.set('ff_vorrat', updated);
       aktualisiereEinkaufslisteGegenVorrat();
+      schreibeVorratZuSheets();
       renderVorrat();
     });
   });
+
+  wrap.querySelectorAll('.vorrat-edit-btn').forEach(b =>
+    b.addEventListener('click', () => openVorratModal(b.dataset.vid)));
 }
 
 // Schrittgröße für den Menge-Zähler: 10 bei Gewicht/Volumen (g/kg/ml/l),
@@ -2961,6 +3128,9 @@ function renderVorratItem(v) {
     } else {
       badge = `<span class="vorrat-mhd-badge">seit ${v.tageAlt === 0 ? 'heute' : v.tageAlt + ' Tag' + (v.tageAlt === 1 ? '' : 'en')}</span>`;
     }
+  } else if (v.tageEingefroren !== null && v.tageEingefroren !== undefined) {
+    const txt = v.tageEingefroren === 0 ? 'heute eingefroren' : `eingefroren vor ${v.tageEingefroren} Tag${v.tageEingefroren === 1 ? '' : 'en'}`;
+    badge = `<span class="vorrat-mhd-badge${v.gefrierAlt ? ' kritisch' : ''}">❄️ ${txt}</span>`;
   } else if (v.istAbgelaufen) {
     badge = `<span class="vorrat-mhd-badge abgelaufen">MHD abgelaufen</span>`;
   } else if (v.istKritisch) {
@@ -2972,7 +3142,7 @@ function renderVorratItem(v) {
 
   let statusKlasse = '';
   if (v.istAbgelaufen) statusKlasse = 'vorrat-item-abgelaufen';
-  else if (v.istKritisch || v.resteMussWeg) statusKlasse = 'vorrat-item-warnung';
+  else if (v.istKritisch || v.resteMussWeg || v.gefrierAlt) statusKlasse = 'vorrat-item-warnung';
 
   // Zweiter Zähler "Anzahl ganzer Packungen" nur zeigen, wenn aus Trello
   // eine Packungsgröße bekannt ist (z.B. "500g" + "3" -> einzelmenge=500,
@@ -2994,7 +3164,10 @@ function renderVorratItem(v) {
     <div class="vorrat-item ${statusKlasse}" data-vid="${v.id}">
       <div class="vorrat-item-kopf">
         <span class="vorrat-item-titel">${v.title}</span>
-        ${badge}
+        <span class="vorrat-kopf-rechts">
+          ${badge}
+          <button class="vorrat-edit-btn" data-vid="${v.id}" title="Bearbeiten">✎</button>
+        </span>
       </div>
       ${anzahlRow}
       <div class="vorrat-item-menge-row">
@@ -3004,6 +3177,288 @@ function renderVorratItem(v) {
         <button class="vorrat-menge-btn" data-vid="${v.id}" data-delta="${mengeSchritt}">+</button>
       </div>
     </div>`;
+}
+
+// ── VORRAT EINGABEMASKE ───────────────────────────────────────
+let _vorratEditId = null; // null = neuer Artikel
+
+function openVorratModal(id) {
+  _vorratEditId = id || null;
+  const v = id ? LS.get('ff_vorrat', []).find(x => x.id === id) : null;
+
+  document.getElementById('vorratModalTitel').textContent = v ? 'Artikel bearbeiten' : 'Artikel anlegen';
+  document.getElementById('vmArtikel').value     = v?.title ?? '';
+  document.getElementById('vmMenge').value       = v?.menge ?? '';
+  document.getElementById('vmEinheit').value     = v?.einheit || 'g';
+  document.getElementById('vmEinzelmenge').value = v?.einzelmenge ?? '';
+  document.getElementById('vmAnzahl').value      = v?.anzahl ?? '';
+  document.getElementById('vmKategorie').value   = v?.kategorie || 'Vorrat';
+  document.getElementById('vmLagerort').value    = v?.lagerort || '';
+  document.getElementById('vmMhd').value         = v?.mhd || '';
+  document.getElementById('vmIstRest').checked   = !!v?.istRest;
+  document.getElementById('vmEingefroren').value = v?.angelegtAm || today();
+  document.getElementById('vmLoeschen').style.display = v ? '' : 'none';
+
+  // Vorschläge für Lagerort: Standard-Orte + alle bereits genutzten
+  const genutzt = LS.get('ff_vorrat', []).map(x => x.lagerort).filter(Boolean);
+  const orte = [...new Set([...VORRAT_LAGERORTE, ...genutzt])];
+  document.getElementById('vmLagerortListe').innerHTML = orte.map(o => `<option value="${o}">`).join('');
+
+  aktualisiereEingefrorenFeld();
+  document.getElementById('vorratModal').classList.add('open');
+}
+
+// "Eingefroren am" nur zeigen, wenn Lagerort = Gefrierschrank
+function aktualisiereEingefrorenFeld() {
+  const ort = document.getElementById('vmLagerort').value;
+  document.getElementById('vmEingefrorenWrap').style.display = istGefrierschrank(ort) ? '' : 'none';
+}
+
+function setupVorratModal() {
+  const close = () => document.getElementById('vorratModal').classList.remove('open');
+  document.getElementById('vmAbbrechen').addEventListener('click', close);
+  document.getElementById('vmLagerort').addEventListener('input', aktualisiereEingefrorenFeld);
+
+  // Packungsgröße × Anzahl füllt die Gesamtmenge automatisch vor
+  const autoMenge = () => {
+    const e = parseFloat(document.getElementById('vmEinzelmenge').value);
+    const a = parseInt(document.getElementById('vmAnzahl').value, 10);
+    if (e > 0 && a >= 0) document.getElementById('vmMenge').value = Math.round(e * a * 100) / 100;
+  };
+  document.getElementById('vmEinzelmenge').addEventListener('input', autoMenge);
+  document.getElementById('vmAnzahl').addEventListener('input', autoMenge);
+
+  document.getElementById('vmSpeichern').addEventListener('click', () => {
+    const titel = document.getElementById('vmArtikel').value.trim();
+    if (!titel) { showToast('Bitte Artikel angeben.'); return; }
+
+    const zahl = (id) => { const x = document.getElementById(id).value; return x === '' ? null : parseFloat(x); };
+    const lagerort = document.getElementById('vmLagerort').value.trim();
+    const istRest = document.getElementById('vmIstRest').checked;
+    const alt = _vorratEditId ? LS.get('ff_vorrat', []).find(x => x.id === _vorratEditId) : null;
+
+    // angelegtAm: bei Gefrierschrank = Einfrierdatum aus dem Feld,
+    // bei Resten = bisheriges Datum bzw. heute, sonst leer.
+    let angelegtAm = null;
+    if (istGefrierschrank(lagerort)) angelegtAm = document.getElementById('vmEingefroren').value || today();
+    else if (istRest) angelegtAm = alt?.angelegtAm || today();
+
+    const eintrag = {
+      id: _vorratEditId || ('vr_' + uid()),
+      title: titel,
+      menge: zahl('vmMenge'),
+      einheit: document.getElementById('vmEinheit').value,
+      kategorie: document.getElementById('vmKategorie').value,
+      mhd: document.getElementById('vmMhd').value || null,
+      lagerort,
+      einzelmenge: zahl('vmEinzelmenge'),
+      anzahl: zahl('vmAnzahl') !== null ? Math.round(zahl('vmAnzahl')) : null,
+      istRest,
+      angelegtAm,
+    };
+
+    const vorrat = LS.get('ff_vorrat', []);
+    const neu = _vorratEditId
+      ? vorrat.map(x => x.id === _vorratEditId ? eintrag : x)
+      : [...vorrat, eintrag];
+    LS.set('ff_vorrat', neu);
+
+    close();
+    aktualisiereEinkaufslisteGegenVorrat();
+    schreibeVorratZuSheets();
+    renderVorrat();
+    showToast(_vorratEditId ? 'Artikel gespeichert ✓' : 'Artikel angelegt ✓');
+  });
+
+  document.getElementById('vmLoeschen').addEventListener('click', () => {
+    if (!_vorratEditId) return;
+    if (!confirm('Artikel endgültig löschen?')) return;
+    LS.set('ff_vorrat', LS.get('ff_vorrat', []).filter(x => x.id !== _vorratEditId));
+    close();
+    aktualisiereEinkaufslisteGegenVorrat();
+    schreibeVorratZuSheets();
+    renderVorrat();
+    showToast('Artikel gelöscht ✓');
+  });
+
+  document.getElementById('vorratNeuBtn').addEventListener('click', () => openVorratModal(null));
+}
+
+// ── WARTUNG ───────────────────────────────────────────────────
+const WARTUNG_VORLAUF_TAGE = 3; // ab so vielen Tagen vorher als "bald fällig" zeigen
+
+// Nächste Fälligkeit: bei Intervall aus "zuletzt erledigt" + Intervall
+// berechnet, sonst das manuell gesetzte feste Datum.
+function berechneNaechsteFaelligkeit(w) {
+  if (w.intervall && w.zuletztErledigt) {
+    const d = new Date(w.zuletztErledigt);
+    d.setDate(d.getDate() + w.intervall);
+    return toLocalDateStr(d);
+  }
+  if (w.intervall && !w.zuletztErledigt) return today(); // nie erledigt -> sofort fällig
+  return w.naechsteFaelligkeit || null;
+}
+
+function getWartungMitStatus() {
+  const heute = new Date(today());
+  return LS.get('ff_wartung', []).map(w => {
+    const faellig = berechneNaechsteFaelligkeit(w);
+    const tageBis = faellig ? Math.round((new Date(faellig) - heute) / 86400000) : null;
+    return {
+      ...w,
+      naechsteFaelligkeit: faellig,
+      tageBis,
+      istUeberfaellig: tageBis !== null && tageBis < 0,
+      istBaldFaellig: tageBis !== null && tageBis >= 0 && tageBis <= WARTUNG_VORLAUF_TAGE,
+    };
+  }).sort((a, b) => {
+    if (a.tageBis === null) return 1;
+    if (b.tageBis === null) return -1;
+    return a.tageBis - b.tageBis;
+  });
+}
+
+function renderWartung() {
+  const wrap = document.getElementById('wartungListe');
+  if (!wrap) return;
+  const liste = getWartungMitStatus();
+
+  if (!liste.length) {
+    wrap.innerHTML = '<div class="empty-state">Noch keine Wartungsaufgaben. Über "+ Aufgabe" anlegen.</div>';
+    return;
+  }
+
+  // Nach Gerät gruppieren
+  const nachGeraet = {};
+  liste.forEach(w => {
+    const g = w.geraet || 'Ohne Gerät';
+    if (!nachGeraet[g]) nachGeraet[g] = [];
+    nachGeraet[g].push(w);
+  });
+
+  wrap.innerHTML = Object.keys(nachGeraet).sort().map(geraet => `
+    <div class="vorrat-kategorie">
+      <div class="vorrat-kat-header">${geraet}</div>
+      ${nachGeraet[geraet].map(w => {
+        let badge = '<span class="vorrat-mhd-badge">kein Termin</span>';
+        if (w.naechsteFaelligkeit) {
+          const lbl = new Date(w.naechsteFaelligkeit).toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
+          if (w.istUeberfaellig) badge = `<span class="vorrat-mhd-badge abgelaufen">überfällig seit ${-w.tageBis} Tag${w.tageBis === -1 ? '' : 'en'}</span>`;
+          else if (w.istBaldFaellig) badge = `<span class="vorrat-mhd-badge kritisch">${w.tageBis === 0 ? 'heute fällig' : `in ${w.tageBis} Tag${w.tageBis === 1 ? '' : 'en'}`}</span>`;
+          else badge = `<span class="vorrat-mhd-badge">fällig ${lbl}</span>`;
+        }
+        const klasse = w.istUeberfaellig ? 'vorrat-item-abgelaufen' : (w.istBaldFaellig ? 'vorrat-item-warnung' : '');
+        const intervallTxt = w.intervall ? `alle ${w.intervall} Tage` : 'fester Termin';
+        const zuletztTxt = w.zuletztErledigt
+          ? `zuletzt ${new Date(w.zuletztErledigt).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}`
+          : 'noch nie erledigt';
+        return `
+          <div class="vorrat-item ${klasse}">
+            <div class="vorrat-item-kopf">
+              <span class="vorrat-item-titel">${w.aufgabe}</span>
+              <span class="vorrat-kopf-rechts">
+                ${badge}
+                <button class="vorrat-edit-btn wartung-edit-btn" data-wid="${w.id}" title="Bearbeiten">✎</button>
+              </span>
+            </div>
+            <div class="wartung-meta">${intervallTxt} · ${zuletztTxt}${w.notiz ? ' · ' + w.notiz : ''}</div>
+            <button class="wartung-erledigt-btn" data-wid="${w.id}">✓ Heute erledigt</button>
+          </div>`;
+      }).join('')}
+    </div>
+  `).join('');
+
+  wrap.querySelectorAll('.wartung-edit-btn').forEach(b =>
+    b.addEventListener('click', () => openWartungModal(b.dataset.wid)));
+  wrap.querySelectorAll('.wartung-erledigt-btn').forEach(b =>
+    b.addEventListener('click', () => wartungErledigt(b.dataset.wid)));
+}
+
+// "Heute erledigt": zuletztErledigt = heute. Bei Intervall-Aufgaben ergibt
+// sich die nächste Fälligkeit dann automatisch; bei festem Termin wird der
+// Termin geleert (einmalige Aufgabe ist erledigt).
+function wartungErledigt(id) {
+  const liste = LS.get('ff_wartung', []).map(w => {
+    if (w.id !== id) return w;
+    const neu = { ...w, zuletztErledigt: today() };
+    if (!w.intervall) neu.naechsteFaelligkeit = null;
+    return neu;
+  });
+  LS.set('ff_wartung', liste);
+  schreibeWartungZuSheets();
+  renderWartung();
+  if (state.activeView === 'home') renderAufgaben();
+  showToast('Wartung erledigt ✓');
+}
+
+let _wartungEditId = null;
+
+function openWartungModal(id) {
+  _wartungEditId = id || null;
+  const w = id ? LS.get('ff_wartung', []).find(x => x.id === id) : null;
+  document.getElementById('wartungModalTitel').textContent = w ? 'Wartungsaufgabe bearbeiten' : 'Wartungsaufgabe anlegen';
+  document.getElementById('wmGeraet').value    = w?.geraet ?? '';
+  document.getElementById('wmAufgabe').value   = w?.aufgabe ?? '';
+  document.getElementById('wmIntervall').value = w?.intervall ?? '';
+  document.getElementById('wmZuletzt').value   = w?.zuletztErledigt || '';
+  document.getElementById('wmNaechste').value  = w?.naechsteFaelligkeit || '';
+  document.getElementById('wmNotiz').value     = w?.notiz ?? '';
+  document.getElementById('wmLoeschen').style.display = w ? '' : 'none';
+
+  const geraete = [...new Set(LS.get('ff_wartung', []).map(x => x.geraet).filter(Boolean))];
+  document.getElementById('wmGeraetListe').innerHTML = geraete.map(g => `<option value="${g}">`).join('');
+
+  aktualisiereNaechsteFeld();
+  document.getElementById('wartungModal').classList.add('open');
+}
+
+// Feste "Nächste Fälligkeit" nur relevant, wenn KEIN Intervall gesetzt ist
+function aktualisiereNaechsteFeld() {
+  const hatIntervall = document.getElementById('wmIntervall').value.trim() !== '';
+  document.getElementById('wmNaechsteWrap').style.display = hatIntervall ? 'none' : '';
+}
+
+function setupWartungModal() {
+  const close = () => document.getElementById('wartungModal').classList.remove('open');
+  document.getElementById('wmAbbrechen').addEventListener('click', close);
+  document.getElementById('wmIntervall').addEventListener('input', aktualisiereNaechsteFeld);
+
+  document.getElementById('wmSpeichern').addEventListener('click', () => {
+    const geraet = document.getElementById('wmGeraet').value.trim();
+    const aufgabe = document.getElementById('wmAufgabe').value.trim();
+    if (!geraet || !aufgabe) { showToast('Bitte Gerät und Aufgabe angeben.'); return; }
+    const intervallRaw = document.getElementById('wmIntervall').value.trim();
+    const intervall = intervallRaw ? parseInt(intervallRaw, 10) : null;
+
+    const eintrag = {
+      id: _wartungEditId || ('wt_' + uid()),
+      geraet, aufgabe, intervall,
+      zuletztErledigt: document.getElementById('wmZuletzt').value || null,
+      naechsteFaelligkeit: intervall ? null : (document.getElementById('wmNaechste').value || null),
+      notiz: document.getElementById('wmNotiz').value.trim(),
+    };
+    // Bei Intervall die berechnete Fälligkeit mitspeichern (steht so auch im Sheet)
+    if (intervall) eintrag.naechsteFaelligkeit = berechneNaechsteFaelligkeit(eintrag);
+
+    const liste = LS.get('ff_wartung', []);
+    LS.set('ff_wartung', _wartungEditId ? liste.map(x => x.id === _wartungEditId ? eintrag : x) : [...liste, eintrag]);
+    close();
+    schreibeWartungZuSheets();
+    renderWartung();
+    showToast(_wartungEditId ? 'Aufgabe gespeichert ✓' : 'Aufgabe angelegt ✓');
+  });
+
+  document.getElementById('wmLoeschen').addEventListener('click', () => {
+    if (!_wartungEditId) return;
+    if (!confirm('Wartungsaufgabe endgültig löschen?')) return;
+    LS.set('ff_wartung', LS.get('ff_wartung', []).filter(x => x.id !== _wartungEditId));
+    close();
+    schreibeWartungZuSheets();
+    renderWartung();
+    showToast('Aufgabe gelöscht ✓');
+  });
+
+  document.getElementById('wartungNeuBtn').addEventListener('click', () => openWartungModal(null));
 }
 
 function renderFamilie() {
@@ -3078,7 +3533,7 @@ function renderBrotvorrat() {
 
     const anpassen = (delta) => {
       const neuerBestand = Math.max(0, brotStatus.bestandJetzt + delta);
-      save('brotvorrat', { bestand: neuerBestand, letztGebacken: today() });
+      setzeBrotvorrat({ bestand: neuerBestand, letztGebacken: today() });
       aktualisiereEinkaufslisteGegenVorrat();
       renderBrotvorrat();
       refreshAllViews();
@@ -3105,7 +3560,7 @@ function renderBrotvorrat() {
   document.getElementById('brotBackenBtn').onclick = () => {
     const input = document.getElementById('brotvorratInput');
     const wert = parseInt(input.value, 10) || 90; // 90 als sinnvoller Default (2 Brote)
-    save('brotvorrat', { bestand: wert, letztGebacken: today() });
+    setzeBrotvorrat({ bestand: wert, letztGebacken: today() });
     input.value = '';
 
     // Historie mitschreiben (Punkt 2: Zähler/Verlauf unter der Eingabe)
@@ -3380,6 +3835,86 @@ function renderConnections() {
     tBtn.textContent = 'Einrichten';
     tBtn.onclick = openTrelloModal;
   }
+
+  // Google Sheets (zwei getrennte Sheets: Vorrat + Wartung)
+  const sStatus = document.getElementById('sheetsStatus');
+  const sBtn    = document.getElementById('sheetsConnectBtn');
+  const hatVorrat  = !!getSheetId('vorrat');
+  const hatWartung = !!getSheetId('wartung');
+  const teile = [];
+  if (hatVorrat)  teile.push('Vorrat');
+  if (hatWartung) teile.push('Wartung');
+
+  const reloadBtn = document.getElementById('sheetsReloadBtn');
+  reloadBtn.style.display = 'none';
+
+  if (teile.length && isGoogleConnected()) {
+    sStatus.textContent = `Verbunden ✓ (${teile.join(' + ')})`;
+    sStatus.classList.add('connected');
+    sBtn.textContent = 'Ändern';
+    sBtn.onclick = openSheetsModal;
+    // Neu laden: holt Änderungen, die andere Personen zwischenzeitlich gemacht haben
+    reloadBtn.style.display = '';
+    reloadBtn.onclick = async () => {
+      showToast('Lade von Sheets…');
+      await syncSheets();
+      aktualisiereEinkaufslisteGegenVorrat();
+      refreshAllViews();
+      showToast('Sheets geladen ✓');
+    };
+  } else if (teile.length) {
+    sStatus.textContent = 'Google zuerst verbinden';
+    sStatus.classList.remove('connected');
+    sBtn.textContent = 'Ändern';
+    sBtn.onclick = openSheetsModal;
+  } else {
+    sStatus.textContent = 'Nicht verbunden';
+    sStatus.classList.remove('connected');
+    sBtn.textContent = 'Einrichten';
+    sBtn.onclick = openSheetsModal;
+  }
+}
+
+function openSheetsModal() {
+  document.getElementById('sheetsVorratInput').value  = getSheetId('vorrat')  || '';
+  document.getElementById('sheetsWartungInput').value = getSheetId('wartung') || '';
+  document.getElementById('sheetsModal').classList.add('open');
+}
+
+// Akzeptiert vollen Link oder reine ID; leer -> null
+function extrahiereSheetId(raw) {
+  const t = (raw || '').trim();
+  if (!t) return null;
+  const m = t.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : t;
+}
+
+function setupSheetsModal() {
+  document.getElementById('sheetsModalCancel').addEventListener('click', () =>
+    document.getElementById('sheetsModal').classList.remove('open'));
+
+  document.getElementById('sheetsModalSave').addEventListener('click', async () => {
+    const vorratId  = extrahiereSheetId(document.getElementById('sheetsVorratInput').value);
+    const wartungId = extrahiereSheetId(document.getElementById('sheetsWartungInput').value);
+    if (!vorratId && !wartungId) { showToast('Bitte mindestens ein Sheet angeben.'); return; }
+
+    saveSheetsConfig({ vorratId, wartungId });
+    // Tab-Namen neu ermitteln, falls sich ein Sheet geändert hat
+    Object.keys(_tabNameCache).forEach(k => delete _tabNameCache[k]);
+    document.getElementById('sheetsModal').classList.remove('open');
+
+    if (!isGoogleConnected()) {
+      showToast('Gespeichert – bitte Google verbinden.');
+      renderFamilie();
+      return;
+    }
+    showToast('Lade von Sheets…');
+    await syncSheets();
+    aktualisiereEinkaufslisteGegenVorrat();
+    renderFamilie();
+    refreshAllViews();
+    showToast('Sheets verbunden ✓');
+  });
 }
 
 // Zeigt Checkboxen für alle verfügbaren Google-Kalender (außer dem
@@ -3431,7 +3966,6 @@ function openTrelloModal() {
   document.getElementById('trelloApiKeyInput').value = creds?.apiKey || '';
   document.getElementById('trelloTokenInput').value  = creds?.token || '';
   document.getElementById('trelloBoardInput').value  = creds?.boardId || '';
-  document.getElementById('trelloVorratBoardInput').value = creds?.vorratBoardId || '';
   document.getElementById('trelloModal').classList.add('open');
 }
 function closeTrelloModal() {
@@ -3525,7 +4059,6 @@ function setupTrelloModal() {
     const apiKey = document.getElementById('trelloApiKeyInput').value.trim();
     const token  = document.getElementById('trelloTokenInput').value.trim();
     let boardRaw = document.getElementById('trelloBoardInput').value.trim();
-    let vorratBoardRaw = document.getElementById('trelloVorratBoardInput').value.trim();
 
     if (!apiKey || !token || !boardRaw) {
       showToast('Bitte alle Felder ausfüllen.');
@@ -3536,13 +4069,7 @@ function setupTrelloModal() {
     const match = boardRaw.match(/trello\.com\/b\/([a-zA-Z0-9]+)/);
     const boardId = match ? match[1] : boardRaw;
 
-    let vorratBoardId = null;
-    if (vorratBoardRaw) {
-      const vorratMatch = vorratBoardRaw.match(/trello\.com\/b\/([a-zA-Z0-9]+)/);
-      vorratBoardId = vorratMatch ? vorratMatch[1] : vorratBoardRaw;
-    }
-
-    saveTrelloCreds({ apiKey, token, boardId, vorratBoardId });
+    saveTrelloCreds({ apiKey, token, boardId });
     closeTrelloModal();
     showToast('Verbinde mit Trello…');
     await syncTrello();
@@ -3592,6 +4119,7 @@ function switchView(view) {
   if (view === 'einkauf')  renderEinkauf();
   if (view === 'familie')  renderFamilie();
   if (view === 'vorrat')   renderVorrat();
+  if (view === 'wartung')  renderWartung();
   if (view === 'home')     renderHome();
 
   window.scrollTo(0, 0);
@@ -3608,6 +4136,7 @@ function refreshAllViews() {
     case 'einkauf':  renderEinkauf(); break;
     case 'familie':  renderFamilie(); break;
     case 'vorrat':   renderVorrat(); break;
+    case 'wartung':  renderWartung(); break;
   }
 }
 
@@ -3626,6 +4155,9 @@ function init() {
   renderHome();
   setupEinkauf();
   setupTrelloModal();
+  setupSheetsModal();
+  setupVorratModal();
+  setupWartungModal();
   setupVorschlagModal();
   setupGerichtAuswahlModal();
   registerServiceWorker();
@@ -3637,9 +4169,13 @@ function init() {
     }
   }, 200);
 
-  if (getTrelloCreds()?.boardId) {
-    syncTrello().then(() => { refreshAllViews(); });
-  }
+  // Reihenfolge wichtig: ERST Vorrat aus Sheets laden, DANN Trello syncen --
+  // sonst wird die Einkaufsliste gegen einen veralteten Vorrat abgeglichen.
+  (async () => {
+    if (isSheetsConnected()) await syncSheets();
+    if (getTrelloCreds()?.boardId) await syncTrello();
+    refreshAllViews();
+  })();
 
   if (isGoogleConnected()) {
     Promise.all([syncGoogleCalendar(), syncGoogleTasks()])
@@ -3669,6 +4205,7 @@ const GOOGLE_CLIENT_ID = '936464755463-i9a3gjjmn6pdfn1eu85tqhv8nvos2njn.apps.goo
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/tasks', // Vollzugriff (nicht nur readonly) -- nötig fürs Zurückschreiben beim Abhaken
+  'https://www.googleapis.com/auth/spreadsheets', // Vorrat + Wartung werden über Google Sheets synchronisiert
 ].join(' ');
 
 // Trello-Keys NIE hardcoden – kommen vom Nutzer, landen nur in LocalStorage.
@@ -3728,7 +4265,9 @@ function disconnectGoogle() {
 async function onGoogleConnected() {
   showToast('Google verbunden ✓');
   renderFamilie();
-  await Promise.all([syncGoogleCalendar(), syncGoogleTasks()]);
+  await Promise.all([syncGoogleCalendar(), syncGoogleTasks(), syncSheets()]);
+  aktualisiereEinkaufslisteGegenVorrat();
+  renderFamilie();
   refreshAllViews();
 }
 
@@ -3897,6 +4436,281 @@ async function schreibeGoogleTaskStatus(aufgabe, done) {
   }
 }
 
+// ── GOOGLE SHEETS: Vorrat + Wartung ───────────────────────────
+// FamilyManager ist das führende System -- Sheets dient nur als
+// Speicher/Sync (kein Polling): beim App-Start bzw. Verbinden wird EINMAL
+// geladen, danach schreibt jede Änderung SOFORT zurück. Bei gleichzeitigen
+// Änderungen durch mehrere Personen gewinnt die zuletzt geschriebene
+// Version (kein Konfliktabgleich) -- das ist bewusst so einfach gehalten.
+
+const VORRAT_SHEET_SPALTEN = ['ID','Artikel','Menge','Einheit','Kategorie','Ablaufdatum','Lagerort','Einzelmenge','Anzahl','IstRest','AngelegtAm','ZuletztGeändert'];
+const WARTUNG_SHEET_SPALTEN = ['ID','Gerät','Aufgabe','Intervall','ZuletztErledigt','NächsteFälligkeit','Notiz','ZuletztGeändert'];
+
+// Zwei getrennte Spreadsheets möglich: eins für Vorrat, eins für Wartung.
+// Liegen beide im selben Spreadsheet, einfach zweimal denselben Link eintragen.
+function getSheetsConfig() {
+  const c = LS.get('ff_sheets_config', null);
+  if (!c) return null;
+  // Migration: alte Konfiguration mit nur EINER spreadsheetId -> für beide nutzen
+  if (c.spreadsheetId && !c.vorratId && !c.wartungId) {
+    return { vorratId: c.spreadsheetId, wartungId: c.spreadsheetId };
+  }
+  return c; // { vorratId, wartungId }
+}
+function saveSheetsConfig(config) {
+  LS.set('ff_sheets_config', config);
+}
+function getSheetId(bereich) { // 'vorrat' | 'wartung'
+  const c = getSheetsConfig();
+  return bereich === 'wartung' ? c?.wartungId : c?.vorratId;
+}
+function isSheetsConnected(bereich) {
+  if (!isGoogleConnected()) return false;
+  if (bereich) return !!getSheetId(bereich);
+  return !!(getSheetId('vorrat') || getSheetId('wartung'));
+}
+
+// Datum-Helfer: TT.MM.JJJJ (Sheet-Anzeige) <-> YYYY-MM-DD (interne Nutzung,
+// gleiches Format wie überall sonst in der App).
+function datumZuSheet(isoDatum) {
+  if (!isoDatum) return '';
+  const [j, m, t] = isoDatum.split('-');
+  return `${t}.${m}.${j}`;
+}
+function datumVonSheet(sheetDatum) {
+  if (!sheetDatum || !String(sheetDatum).trim()) return null;
+  const m = String(sheetDatum).trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+  if (!m) return null;
+  const jahr = m[3].length === 2 ? '20' + m[3] : m[3];
+  return `${jahr}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+}
+
+// Ermittelt den tatsächlich zu nutzenden Tab-Namen: bevorzugt den
+// gewünschten Namen ("Vorrat"/"Wartung"); existiert der im Spreadsheet
+// nicht (z.B. heißt er noch "Tabellenblatt1"), wird der ERSTE Tab genommen.
+const _tabNameCache = {};
+async function ermittleTabName(spreadsheetId, bevorzugt) {
+  const cacheKey = spreadsheetId + '|' + bevorzugt;
+  if (_tabNameCache[cacheKey]) return _tabNameCache[cacheKey];
+
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${googleAccessToken.token}` } });
+  if (!res.ok) throw new Error(`Sheets API Metadaten: ${res.status}`);
+  const data = await res.json();
+  const titel = (data.sheets || []).map(s => s.properties.title);
+  if (!titel.length) throw new Error('Spreadsheet hat keine Tabs.');
+
+  const treffer = titel.find(t => t.trim().toLowerCase() === bevorzugt.toLowerCase()) || titel[0];
+  _tabNameCache[cacheKey] = treffer;
+  return treffer;
+}
+
+// Tab-Namen mit Leerzeichen/Sonderzeichen müssen in A1-Notation in
+// einfache Anführungszeichen gesetzt werden: 'Tabellenblatt 1'!A1
+function a1(tab, bereich = '') {
+  return `'${tab.replace(/'/g, "''")}'${bereich ? '!' + bereich : ''}`;
+}
+
+// Generischer Sheets-Read: liest einen kompletten Tab als Array von
+// Roh-Zeilen (erste Zeile = Kopfzeile, wird mitgeliefert).
+async function ladeSheetTab(bereich, bevorzugterTab) {
+  const id = getSheetId(bereich);
+  if (!id || !isGoogleConnected()) return null;
+
+  const tab = await ermittleTabName(id, bevorzugterTab);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(a1(tab))}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${googleAccessToken.token}` },
+  });
+  if (!res.ok) throw new Error(`Sheets API (${tab}): ${res.status}`);
+  const data = await res.json();
+  return data.values || [];
+}
+
+// Generischer Sheets-Write: überschreibt einen kompletten Tab (Kopfzeile +
+// alle Datenzeilen) in einem Rutsch. Einfacher und robuster als einzelne
+// Zeilen abzugleichen, und für die üblichen Vorrat-/Wartungsgrößen
+// (Dutzende, nicht Tausende Zeilen) performant genug.
+async function schreibeSheetTab(bereich, bevorzugterTab, kopfzeile, datenZeilen) {
+  const id = getSheetId(bereich);
+  if (!id || !isGoogleConnected()) return;
+
+  const tab = await ermittleTabName(id, bevorzugterTab);
+  const alleZeilen = [kopfzeile, ...datenZeilen];
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(a1(tab, 'A1'))}?valueInputOption=RAW`;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${googleAccessToken.token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ values: alleZeilen }),
+  });
+  if (!res.ok) throw new Error(`Sheets API Write (${tab}): ${res.status}`);
+
+  // Alte, jetzt überzählige Zeilen (falls die Liste kürzer geworden ist)
+  // explizit leeren, damit keine "Geister-Artikel" unten stehen bleiben.
+  const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(a1(tab, `A${alleZeilen.length + 1}:Z2000`))}:clear`;
+  await fetch(clearUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${googleAccessToken.token}` },
+  }).catch(() => {}); // nicht kritisch, falls das fehlschlägt
+
+  LS.set('ff_sheets_zuletzt_geschrieben', new Date().toISOString());
+}
+
+// ── VORRAT ↔ SHEETS ────────────────────────────────────────────
+function vorratItemZuZeile(v) {
+  return [
+    v.id, v.title, v.menge ?? '', v.einheit ?? '', v.kategorie ?? '',
+    datumZuSheet(v.mhd), v.lagerort ?? '', v.einzelmenge ?? '', v.anzahl ?? '',
+    v.istRest ? 'TRUE' : 'FALSE', datumZuSheet(v.angelegtAm),
+    new Date().toISOString(),
+  ];
+}
+function zeileZuVorratItem(zeile) {
+  const [id, artikel, menge, einheit, kategorie, ablauf, lagerort, einzelmenge, anzahl, istRest, angelegtAm] = zeile;
+  if (!artikel) return null; // leere Zeile überspringen
+  return {
+    id: id || ('vr_' + uid()),
+    title: artikel,
+    menge: menge !== '' && menge != null ? parseFloat(menge) : null,
+    einheit: einheit || null,
+    kategorie: kategorie || null,
+    mhd: datumVonSheet(ablauf),
+    lagerort: lagerort || '',
+    einzelmenge: einzelmenge !== '' && einzelmenge != null ? parseFloat(einzelmenge) : null,
+    anzahl: anzahl !== '' && anzahl != null ? parseInt(anzahl, 10) : null,
+    istRest: String(istRest).toUpperCase() === 'TRUE',
+    angelegtAm: datumVonSheet(angelegtAm),
+  };
+}
+
+// ── BROT IM VORRAT-SHEET ──────────────────────────────────────
+// Brot liegt als feste Zeile im Vorrat-Sheet (id "vr_brot"). Menge = Bestand
+// zum Zeitpunkt "AngelegtAm" (= Backdatum bzw. letzte Korrektur); der
+// aktuelle Bestand wird wie bisher per Prognose (checkBrotvorratKnapp)
+// hochgerechnet. Bedient wird Brot weiter über die Brotvorrat-Karte.
+const BROT_VORRAT_ID = 'vr_brot';
+function istBrotEintrag(v) { return v && v.id === BROT_VORRAT_ID; }
+
+// Schreibt den aktuellen state.brotvorrat als Zeile in ff_vorrat (upsert).
+function upsertBrotInVorrat() {
+  const b = state.brotvorrat;
+  const ohneBrot = LS.get('ff_vorrat', []).filter(v => !istBrotEintrag(v));
+  if (b.bestand !== null && b.bestand !== undefined) {
+    ohneBrot.push({
+      id: BROT_VORRAT_ID,
+      title: 'Brot',
+      menge: b.bestand,
+      einheit: 'scheibe',
+      kategorie: 'Backwaren',
+      mhd: null,
+      lagerort: 'Brotkasten',
+      einzelmenge: null,
+      anzahl: null,
+      istRest: false,
+      angelegtAm: b.letztGebacken,
+    });
+  }
+  LS.set('ff_vorrat', ohneBrot);
+}
+
+// Zentrale Stelle für jede Brotvorrat-Änderung: lokal speichern, in die
+// Vorrat-Daten spiegeln und (optional) sofort ins Sheet schreiben.
+function setzeBrotvorrat(neu, { schreiben = true } = {}) {
+  save('brotvorrat', neu);
+  upsertBrotInVorrat();
+  if (schreiben) schreibeVorratZuSheets();
+}
+
+async function ladeVorratVonSheets() {
+  try {
+    const rows = await ladeSheetTab('vorrat', 'Vorrat');
+    if (rows === null) return;
+    const datenZeilen = rows.slice(1); // erste Zeile ist die Kopfzeile
+    const vorrat = datenZeilen.map(zeileZuVorratItem).filter(Boolean);
+    LS.set('ff_vorrat', vorrat);
+
+    const brot = vorrat.find(istBrotEintrag);
+    if (brot) {
+      // Sheet ist führend für den Brotbestand (auch für andere Nutzer)
+      save('brotvorrat', { bestand: brot.menge, letztGebacken: brot.angelegtAm });
+    } else if (state.brotvorrat.bestand !== null) {
+      // Migration: bisher nur lokal gespeicherten Brotvorrat einmalig ins Sheet
+      upsertBrotInVorrat();
+      schreibeVorratZuSheets();
+    }
+  } catch (err) {
+    console.error('Vorrat von Sheets laden fehlgeschlagen:', err);
+    showToast('Vorrat konnte nicht von Sheets geladen werden.');
+  }
+}
+
+async function schreibeVorratZuSheets() {
+  try {
+    const vorrat = LS.get('ff_vorrat', []);
+    await schreibeSheetTab('vorrat', 'Vorrat', VORRAT_SHEET_SPALTEN, vorrat.map(vorratItemZuZeile));
+  } catch (err) {
+    console.error('Vorrat zu Sheets schreiben fehlgeschlagen:', err);
+    showToast('Vorrat konnte nicht in Sheets gespeichert werden.');
+  }
+}
+
+// ── WARTUNG ↔ SHEETS ───────────────────────────────────────────
+function wartungItemZuZeile(w) {
+  return [
+    w.id, w.geraet, w.aufgabe, w.intervall ?? '',
+    datumZuSheet(w.zuletztErledigt), datumZuSheet(w.naechsteFaelligkeit),
+    w.notiz ?? '', new Date().toISOString(),
+  ];
+}
+function zeileZuWartungItem(zeile) {
+  const [id, geraet, aufgabe, intervall, zuletzt, naechste, notiz] = zeile;
+  if (!geraet && !aufgabe) return null;
+  return {
+    id: id || ('wt_' + uid()),
+    geraet: geraet || '',
+    aufgabe: aufgabe || '',
+    intervall: intervall !== '' && intervall != null ? parseInt(intervall, 10) : null,
+    zuletztErledigt: datumVonSheet(zuletzt),
+    naechsteFaelligkeit: datumVonSheet(naechste),
+    notiz: notiz || '',
+  };
+}
+
+async function ladeWartungVonSheets() {
+  try {
+    const rows = await ladeSheetTab('wartung', 'Wartung');
+    if (rows === null) return;
+    const datenZeilen = rows.slice(1);
+    const wartung = datenZeilen.map(zeileZuWartungItem).filter(Boolean);
+    LS.set('ff_wartung', wartung);
+  } catch (err) {
+    console.error('Wartung von Sheets laden fehlgeschlagen:', err);
+    showToast('Wartung konnte nicht von Sheets geladen werden.');
+  }
+}
+
+async function schreibeWartungZuSheets() {
+  try {
+    const wartung = LS.get('ff_wartung', []);
+    await schreibeSheetTab('wartung', 'Wartung', WARTUNG_SHEET_SPALTEN, wartung.map(wartungItemZuZeile));
+  } catch (err) {
+    console.error('Wartung zu Sheets schreiben fehlgeschlagen:', err);
+    showToast('Wartung konnte nicht in Sheets gespeichert werden.');
+  }
+}
+
+// Lädt beim Verbinden/App-Start BEIDE Tabs einmalig.
+async function syncSheets() {
+  if (!isSheetsConnected()) return;
+  const jobs = [];
+  if (isSheetsConnected('vorrat'))  jobs.push(ladeVorratVonSheets());
+  if (isSheetsConnected('wartung')) jobs.push(ladeWartungVonSheets());
+  await Promise.all(jobs);
+}
+
 // ── TRELLO ────────────────────────────────────────────────────
 const TRELLO_DAY_LISTS = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
 
@@ -3996,7 +4810,7 @@ function parseCardLabels(card) {
 // Eigenständig aufrufbar, damit sie unabhängig vom Haupt-Sync läuft.
 // Lagerort-Listen, die als Vorrat verarbeitet werden. Jede Karte darin
 // bekommt automatisch den Listennamen als "lagerort" zugewiesen.
-const VORRAT_LAGERORTE = ['Keller', 'Kühlschrank'];
+const VORRAT_LAGERORTE = ['Kühlschrank', 'Gefrierschrank', 'Keller', 'Speisekammer'];
 
 // Trello-Listennamen können unsichtbare führende/abschließende Leerzeichen
 // haben (z.B. "Kühlschrank "), die exakten String-Vergleich scheitern lassen.
@@ -4098,7 +4912,7 @@ function verbraucheAusVorrat(titel, menge, einheit) {
     // "letztGebacken" auf heute setzen, damit die rückwirkende Prognose-
     // Berechnung ab jetzt von diesem neuen, bereits reduzierten Bestand
     // ausgeht statt den Verbrauch doppelt (Prognose + manueller Abzug) zu zählen.
-    save('brotvorrat', { bestand: neuerBestand, letztGebacken: today() });
+    setzeBrotvorrat({ bestand: neuerBestand, letztGebacken: today() }, { schreiben: false });
     return;
   }
 
@@ -4199,16 +5013,9 @@ async function syncTrello() {
     existingPool.forEach(g => { poolMap[g.title] = g; });
     const newPool = [];
 
-    // Bestehende Kühltruhe laden – eingefrorenAm-Datum behalten für Karten,
-    // die schon bekannt sind; nur bei NEUEN Karten wird heute eingetragen.
-    const existingKuehltruhe = LS.get('ff_kuehltruhe', []);
-    const kuehltruheMap = {};
-    existingKuehltruhe.forEach(k => { kuehltruheMap[k.title] = k; });
-    const newKuehltruhe = [];
-
-    // Vorrat aus dem Hauptboard sammeln (Keller + Kühlschrank), nur genutzt
-    // wenn KEIN separates Vorrat-Board konfiguriert ist.
-    const vorratAusHauptboard = [];
+    // Vorrat + Kühltruhe laufen NICHT mehr über Trello, sondern ausschließlich
+    // über Google Sheets (Tab "Vorrat", Lagerort "Gefrierschrank" ersetzt die
+    // frühere Kühltruhe-Liste). Trello liefert nur noch Essensplan + Pool.
 
     lists.forEach(list => {
       // ── Pool: Hauptgerichte aus der Ideenliste ────────────────
@@ -4230,29 +5037,6 @@ async function syncTrello() {
             werkzeug,                          // "backblech" | "pfanne" | "topf" | "auflaufform" | null
           });
         });
-        return; // Wochentag-Verarbeitung überspringen
-      }
-
-      // ── Kühltruhe: eingefrorene Reste mit Einfrierdatum ───────
-      if (list.name === 'Kühltruhe') {
-        list.cards.forEach(card => {
-          const { tags } = parseCardLabels(card);
-          const existing = kuehltruheMap[card.name];
-          newKuehltruhe.push({
-            id:           existing?.id || 'kt_' + uid(),
-            title:        card.name,
-            tags,
-            eingefrorenAm: existing?.eingefrorenAm || today(), // nur bei NEUER Karte gesetzt
-          });
-        });
-        return; // Wochentag-Verarbeitung überspringen
-      }
-
-      // ── Vorrat: Keller/Kühlschrank, nur verarbeiten wenn KEIN separates
-      // Board eingetragen ist -- sonst übernimmt syncVorratBoard() exklusiv.
-      if (istVorratsLagerort(list.name)) {
-        if (creds.vorratBoardId) return; // separates Board zuständig, hier überspringen
-        vorratAusHauptboard.push(...parseVorratsListe(list, LS.get('ff_vorrat', [])));
         return; // Wochentag-Verarbeitung überspringen
       }
 
@@ -4314,10 +5098,6 @@ async function syncTrello() {
 
     save('essenWoche', essenWoche);
     if (newPool.length) LS.set('ff_gerichtPool', newPool);
-    LS.set('ff_kuehltruhe', newKuehltruhe); // auch leeres Array speichern (Liste kann leergeräumt worden sein)
-    if (!creds.vorratBoardId && vorratAusHauptboard.length) {
-      LS.set('ff_vorrat', vorratAusHauptboard);
-    }
 
     // Vorrat-Abgleich: erst JETZT, nachdem der komplette Wochenbedarf pro
     // Zutat bekannt ist. Summiert z.B. 7× "180g Haferflocken" zu 1260g und
@@ -4358,7 +5138,6 @@ async function syncTrello() {
     save('einkauf', dedupeEinkauf([...behalten, ...neueItems]));
 
     // Separates Vorrat-Board (falls konfiguriert) unabhängig synchronisieren
-    if (creds.vorratBoardId) await syncVorratBoard();
 
     showToast('Trello synchronisiert ✓');
   } catch (err) {
@@ -4403,16 +5182,24 @@ function hasTag(gericht, tagWord) {
 const KUEHLTRUHE_PRIORITAET_TAGE = 14;
 
 function getKuehltrucheAlsVorschlagKandidaten(usedTitles) {
-  const kuehltruhe = LS.get('ff_kuehltruhe', []);
+  // Kühltruhe = Vorrat-Artikel mit Lagerort "Gefrierschrank"; angelegtAm
+  // dient dort als "eingefroren am".
+  const kuehltruhe = LS.get('ff_vorrat', []).filter(v => istGefrierschrank(v.lagerort) && v.angelegtAm);
   const heute = new Date(today());
   return kuehltruhe
     .filter(k => !usedTitles.includes(k.title))
     .map(k => ({
       ...k,
-      tageAlt: Math.round((heute - new Date(k.eingefrorenAm)) / (1000 * 60 * 60 * 24)),
+      tags: k.tags || [],
+      tageAlt: Math.round((heute - new Date(k.angelegtAm)) / (1000 * 60 * 60 * 24)),
     }))
     .filter(k => k.tageAlt >= KUEHLTRUHE_PRIORITAET_TAGE)
     .sort((a, b) => b.tageAlt - a.tageAlt); // ältestes zuerst
+}
+
+function istGefrierschrank(lagerort) {
+  const l = (lagerort || '').trim().toLowerCase();
+  return l === 'gefrierschrank' || l === 'kühltruhe' || l === 'tiefkühler';
 }
 
 // Findet ein Gericht aus dem Pool, das eine bald ablaufende Vorratszutat
