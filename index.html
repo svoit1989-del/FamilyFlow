@@ -1298,6 +1298,77 @@ select.modal-input { background: #fff; }
   font-size: 0.85rem; flex-shrink: 0;
 }
 .vorrat-edit-btn:active { background: var(--cream-dim); }
+/* Gerätefilter (Wartung) */
+.filter-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 0 12px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.filter-chips::-webkit-scrollbar { display: none; }
+.filter-chip {
+  flex-shrink: 0;
+  background: #fff;
+  border: 1.5px solid var(--cream-dim);
+  color: var(--forest);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 7px 13px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.filter-chip.aktiv { background: var(--forest); border-color: var(--forest); color: var(--cream); }
+.filter-chip-badge {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 99px;
+  background: var(--status-mid);
+  color: #fff;
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+/* Vorschlags-Chips in Masken */
+.vorschlag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px; }
+.vorschlag-chips:empty { display: none; }
+.vorschlag-chip {
+  background: var(--cream);
+  color: var(--forest);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 11px;
+  border-radius: 99px;
+}
+.vorschlag-chip:active { background: var(--green); color: #fff; }
+.vorschlag-chip.vorhanden { background: transparent; border: 1.5px dashed var(--cream-dim); color: var(--muted); }
+
+/* Wartungs-Verlauf */
+.wartung-historie { margin-top: 8px; }
+.wartung-historie summary {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--green);
+  cursor: pointer;
+  list-style: none;
+}
+.wartung-historie summary::-webkit-details-marker { display: none; }
+.wartung-historie summary::before { content: '▸ '; }
+.wartung-historie[open] summary::before { content: '▾ '; }
+.wartung-historie ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.wartung-historie li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--ink);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--cream-dim);
+}
+.wartung-historie li:last-child { border-bottom: none; }
+.wartung-abstand { color: var(--muted); font-size: 0.72rem; }
 .wartung-meta { font-size: 0.78rem; color: var(--muted); margin-top: -2px; }
 .wartung-erledigt-btn {
   margin-top: 10px; width: 100%; padding: 10px;
@@ -1603,6 +1674,7 @@ select.modal-input { background: #fff; }
         <div class="view-header">Wartung</div>
         <button class="vorschlag-btn" id="wartungNeuBtn">+ Aufgabe</button>
       </div>
+      <div id="wartungFilter" class="filter-chips"></div>
       <div id="wartungListe"></div>
     </section>
 
@@ -1696,11 +1768,11 @@ select.modal-input { background: #fff; }
       <div class="modal-box">
         <div class="modal-title" id="wartungModalTitel">Wartungsaufgabe anlegen</div>
         <label class="modal-label">Gerät</label>
-        <input class="modal-input" id="wmGeraet" list="wmGeraetListe" autocomplete="off" placeholder="z.B. Kaffeemaschine" />
-        <datalist id="wmGeraetListe"></datalist>
+        <input class="modal-input" id="wmGeraet" autocomplete="off" placeholder="z.B. Kaffeemaschine" />
+        <div class="vorschlag-chips" id="wmGeraetChips"></div>
         <label class="modal-label">Aufgabe</label>
-        <input class="modal-input" id="wmAufgabe" list="wmAufgabeListe" autocomplete="off" placeholder="z.B. Entkalken" />
-        <datalist id="wmAufgabeListe"></datalist>
+        <input class="modal-input" id="wmAufgabe" autocomplete="off" placeholder="z.B. Entkalken" />
+        <div class="vorschlag-chips" id="wmAufgabeChips"></div>
         <label class="modal-label">Intervall in Tagen (leer = fester Termin)</label>
         <input class="modal-input" id="wmIntervall" type="number" step="1" min="1" placeholder="z.B. 90" />
         <label class="modal-label">Zuletzt erledigt</label>
@@ -3551,15 +3623,41 @@ function getWartungMitStatus() {
   });
 }
 
+// Aktiver Gerätefilter ('' = alle). Bleibt beim Wechseln der Ansicht erhalten.
+let _wartungFilter = LS.get('ff_wartung_filter', '');
+
 function renderWartung() {
   const wrap = document.getElementById('wartungListe');
+  const filterWrap = document.getElementById('wartungFilter');
   if (!wrap) return;
-  const liste = getWartungMitStatus();
+  const alle = getWartungMitStatus();
 
-  if (!liste.length) {
+  if (!alle.length) {
+    if (filterWrap) filterWrap.innerHTML = '';
     wrap.innerHTML = '<div class="empty-state">Noch keine Wartungsaufgaben. Über "+ Aufgabe" anlegen.</div>';
     return;
   }
+
+  // ── Gerätefilter als Chips: "Alle" + jedes Gerät (mit Anzahl fälliger) ──
+  const geraete = [...new Set(alle.map(w => w.geraet || 'Ohne Gerät'))].sort((a, b) => a.localeCompare(b, 'de'));
+  if (_wartungFilter && !geraete.includes(_wartungFilter)) _wartungFilter = ''; // Gerät existiert nicht mehr
+  const faelligAnzahl = g => alle.filter(w => (w.geraet || 'Ohne Gerät') === g && (w.istUeberfaellig || w.istBaldFaellig)).length;
+
+  if (filterWrap) {
+    const chip = (wert, text, n) => `
+      <button class="filter-chip${_wartungFilter === wert ? ' aktiv' : ''}" data-filter="${escAttr(wert)}">
+        ${text}${n ? ` <span class="filter-chip-badge">${n}</span>` : ''}
+      </button>`;
+    const gesamtFaellig = alle.filter(w => w.istUeberfaellig || w.istBaldFaellig).length;
+    filterWrap.innerHTML = chip('', 'Alle', gesamtFaellig) + geraete.map(g => chip(g, g, faelligAnzahl(g))).join('');
+    filterWrap.querySelectorAll('.filter-chip').forEach(b => b.addEventListener('click', () => {
+      _wartungFilter = b.dataset.filter;
+      LS.set('ff_wartung_filter', _wartungFilter);
+      renderWartung();
+    }));
+  }
+
+  const liste = _wartungFilter ? alle.filter(w => (w.geraet || 'Ohne Gerät') === _wartungFilter) : alle;
 
   // Nach Gerät gruppieren
   const nachGeraet = {};
@@ -3569,7 +3667,9 @@ function renderWartung() {
     nachGeraet[g].push(w);
   });
 
-  wrap.innerHTML = Object.keys(nachGeraet).sort().map(geraet => `
+  const fmtLang = d => new Date(d).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  wrap.innerHTML = Object.keys(nachGeraet).sort((a, b) => a.localeCompare(b, 'de')).map(geraet => `
     <div class="vorrat-kategorie">
       <div class="vorrat-kat-header">${geraet}</div>
       ${nachGeraet[geraet].map(w => {
@@ -3585,6 +3685,21 @@ function renderWartung() {
         const zuletztTxt = w.zuletztErledigt
           ? `zuletzt ${new Date(w.zuletztErledigt).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}`
           : 'noch nie erledigt';
+
+        // Historie: aufklappbar, neueste zuerst, mit Abstand zum vorherigen Mal
+        const hist = w.historie || [];
+        const histHtml = hist.length ? `
+          <details class="wartung-historie">
+            <summary>Verlauf (${hist.length}×)</summary>
+            <ul>
+              ${hist.map((d, i) => {
+                const vorher = hist[i + 1];
+                const abstand = vorher ? Math.round((new Date(d) - new Date(vorher)) / 86400000) : null;
+                return `<li><span>${fmtLang(d)}</span>${abstand !== null ? `<span class="wartung-abstand">nach ${abstand} Tagen</span>` : ''}</li>`;
+              }).join('')}
+            </ul>
+          </details>` : '';
+
         return `
           <div class="vorrat-item ${klasse}">
             <div class="vorrat-item-kopf">
@@ -3595,6 +3710,7 @@ function renderWartung() {
               </span>
             </div>
             <div class="wartung-meta">${intervallTxt} · ${zuletztTxt}${w.notiz ? ' · ' + w.notiz : ''}</div>
+            ${histHtml}
             <button class="wartung-erledigt-btn" data-wid="${w.id}">✓ Heute erledigt</button>
           </div>`;
       }).join('')}
@@ -3607,13 +3723,13 @@ function renderWartung() {
     b.addEventListener('click', () => wartungErledigt(b.dataset.wid)));
 }
 
-// "Heute erledigt": zuletztErledigt = heute. Bei Intervall-Aufgaben ergibt
-// sich die nächste Fälligkeit dann automatisch; bei festem Termin wird der
-// Termin geleert (einmalige Aufgabe ist erledigt).
+// "Heute erledigt": zuletztErledigt = heute und Eintrag in die Historie.
+// Bei Intervall-Aufgaben ergibt sich die nächste Fälligkeit dann automatisch;
+// bei festem Termin wird der Termin geleert (einmalige Aufgabe ist erledigt).
 function wartungErledigt(id) {
   const liste = LS.get('ff_wartung', []).map(w => {
     if (w.id !== id) return w;
-    const neu = { ...w, zuletztErledigt: today() };
+    const neu = { ...w, zuletztErledigt: today(), historie: sortiereHistorie([today(), ...(w.historie || [])]) };
     if (!w.intervall) neu.naechsteFaelligkeit = null;
     return neu;
   });
@@ -3630,7 +3746,8 @@ function openWartungModal(id) {
   _wartungEditId = id || null;
   const w = id ? LS.get('ff_wartung', []).find(x => x.id === id) : null;
   document.getElementById('wartungModalTitel').textContent = w ? 'Wartungsaufgabe bearbeiten' : 'Wartungsaufgabe anlegen';
-  document.getElementById('wmGeraet').value    = w?.geraet ?? '';
+  // Neue Aufgabe bei aktivem Gerätefilter: Gerät schon vorbelegen
+  document.getElementById('wmGeraet').value    = w?.geraet ?? (_wartungFilter && _wartungFilter !== 'Ohne Gerät' ? _wartungFilter : '');
   document.getElementById('wmAufgabe').value   = w?.aufgabe ?? '';
   document.getElementById('wmIntervall').value = w?.intervall ?? '';
   document.getElementById('wmZuletzt').value   = w?.zuletztErledigt || '';
@@ -3638,25 +3755,58 @@ function openWartungModal(id) {
   document.getElementById('wmNotiz').value     = w?.notiz ?? '';
   document.getElementById('wmLoeschen').style.display = w ? '' : 'none';
 
-  // Vorschläge für Geräte: alle jemals erfassten, alphabetisch
-  const geraete = [...new Set(getWartungKatalog().map(x => x.geraet.trim()))]
-    .sort((a, b) => a.localeCompare(b, 'de'));
-  document.getElementById('wmGeraetListe').innerHTML = geraete.map(g => `<option value="${escAttr(g)}">`).join('');
-  aktualisiereAufgabenVorschlaege();
-
+  renderWartungChips();
   aktualisiereNaechsteFeld();
   document.getElementById('wartungModal').classList.add('open');
 }
 
-// Aufgaben-Vorschläge passend zum gewählten Gerät zuerst, danach alle
-// anderen bekannten Aufgaben (z.B. "Entkalken" gibt es bei mehreren Geräten).
-function aktualisiereAufgabenVorschlaege() {
-  const geraet = normKey(document.getElementById('wmGeraet').value);
+// Eigene Vorschlags-Chips statt Browser-Vorschlagslisten (<datalist>): die
+// mischen auf dem Handy Einträge anderer Geräte bei und ignorieren die
+// gewünschte Reihenfolge.
+//  - Gerät: bekannte Geräte, gefiltert nach dem Getippten (ausgeblendet,
+//    sobald ein bekanntes Gerät exakt eingetragen ist)
+//  - Aufgabe: NUR die Aufgaben des gewählten Geräts
+function renderWartungChips() {
+  const gWert = document.getElementById('wmGeraet').value;
+  const aWert = document.getElementById('wmAufgabe').value;
+  const gKey = normKey(gWert), aKey = normKey(aWert);
   const katalog = getWartungKatalog();
-  const passend = katalog.filter(x => normKey(x.geraet) === geraet).map(x => x.aufgabe.trim());
-  const andere  = katalog.filter(x => normKey(x.geraet) !== geraet).map(x => x.aufgabe.trim());
-  const liste = [...new Set([...passend.sort((a,b)=>a.localeCompare(b,'de')), ...andere.sort((a,b)=>a.localeCompare(b,'de'))])];
-  document.getElementById('wmAufgabeListe').innerHTML = liste.map(a => `<option value="${escAttr(a)}">`).join('');
+  const aktiv = LS.get('ff_wartung', []);
+
+  const geraete = [...new Set(katalog.map(x => x.geraet.trim()))].sort((a, b) => a.localeCompare(b, 'de'));
+  const geraetBekannt = geraete.some(g => normKey(g) === gKey);
+
+  // Geräte-Chips
+  const gChips = geraetBekannt ? [] : geraete.filter(g => !gKey || normKey(g).includes(gKey)).slice(0, 12);
+  document.getElementById('wmGeraetChips').innerHTML = gChips
+    .map(g => `<button type="button" class="vorschlag-chip" data-geraet="${escAttr(g)}">${g}</button>`).join('');
+
+  // Aufgaben-Chips: nur für das gewählte Gerät
+  let aChips = [];
+  if (geraetBekannt) {
+    aChips = [...new Set(katalog.filter(x => normKey(x.geraet) === gKey).map(x => x.aufgabe.trim()))]
+      .filter(a => normKey(a) !== aKey && (!aKey || normKey(a).includes(aKey)))
+      .sort((a, b) => a.localeCompare(b, 'de'));
+  }
+  document.getElementById('wmAufgabeChips').innerHTML = aChips.map(a => {
+    // Bei neuer Aufgabe: bereits angelegte Kombination kennzeichnen
+    const vorhanden = !_wartungEditId && aktiv.find(w => normKey(w.geraet) === gKey && normKey(w.aufgabe) === normKey(a));
+    return `<button type="button" class="vorschlag-chip${vorhanden ? ' vorhanden' : ''}" data-aufgabe="${escAttr(a)}"
+              ${vorhanden ? `data-vorhanden-id="${vorhanden.id}"` : ''}>${a}${vorhanden ? ' · vorhanden' : ''}</button>`;
+  }).join('');
+
+  document.querySelectorAll('#wmGeraetChips .vorschlag-chip').forEach(b => b.addEventListener('click', () => {
+    document.getElementById('wmGeraet').value = b.dataset.geraet;
+    renderWartungChips();
+    fuelleWartungAusKatalog();
+    document.getElementById('wmAufgabe').focus();
+  }));
+  document.querySelectorAll('#wmAufgabeChips .vorschlag-chip').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.vorhandenId) { openWartungModal(b.dataset.vorhandenId); return; } // statt Duplikat: vorhandene öffnen
+    document.getElementById('wmAufgabe').value = b.dataset.aufgabe;
+    fuelleWartungAusKatalog();
+    renderWartungChips();
+  }));
 }
 
 // Bekannte Kombination Gerät + Aufgabe -> Intervall und Notiz vorausfüllen
@@ -3684,10 +3834,8 @@ function setupWartungModal() {
   const close = () => document.getElementById('wartungModal').classList.remove('open');
   document.getElementById('wmAbbrechen').addEventListener('click', close);
   document.getElementById('wmIntervall').addEventListener('input', aktualisiereNaechsteFeld);
-  document.getElementById('wmGeraet').addEventListener('input', aktualisiereAufgabenVorschlaege);
-  document.getElementById('wmGeraet').addEventListener('change', () => { aktualisiereAufgabenVorschlaege(); fuelleWartungAusKatalog(); });
-  document.getElementById('wmAufgabe').addEventListener('change', fuelleWartungAusKatalog);
-  document.getElementById('wmAufgabe').addEventListener('input', fuelleWartungAusKatalog);
+  document.getElementById('wmGeraet').addEventListener('input', () => { renderWartungChips(); fuelleWartungAusKatalog(); });
+  document.getElementById('wmAufgabe').addEventListener('input', () => { renderWartungChips(); fuelleWartungAusKatalog(); });
 
   document.getElementById('wmSpeichern').addEventListener('click', () => {
     const geraet = document.getElementById('wmGeraet').value.trim();
@@ -3703,6 +3851,9 @@ function setupWartungModal() {
       naechsteFaelligkeit: intervall ? null : (document.getElementById('wmNaechste').value || null),
       notiz: document.getElementById('wmNotiz').value.trim(),
     };
+    // Historie beim Bearbeiten erhalten; manuell eingetragenes Datum ergänzen
+    const bisher = _wartungEditId ? (LS.get('ff_wartung', []).find(x => x.id === _wartungEditId)?.historie || []) : [];
+    eintrag.historie = sortiereHistorie([...(eintrag.zuletztErledigt ? [eintrag.zuletztErledigt] : []), ...bisher]);
     // Bei Intervall die berechnete Fälligkeit mitspeichern (steht so auch im Sheet)
     if (intervall) eintrag.naechsteFaelligkeit = berechneNaechsteFaelligkeit(eintrag);
 
@@ -3998,41 +4149,23 @@ async function debugGoogleTasks() {
   }
 
   try {
-    const listsRes = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
-      headers: { Authorization: `Bearer ${googleAccessToken.token}` },
-    });
-    const listsData = await listsRes.json();
+    // Gleiche Abfrage wie syncGoogleTasks(): ALLE Listen, volle Pagination
+    const listen = await ladeAlleTasklisten();
+    const fmt = d => d ? d.slice(0, 10).split('-').reverse().join('.') : '–';
+    let report = `${listen.length} Aufgabenliste(n) gefunden\n\n`;
 
-    let report = `TASKLISTEN (Status ${listsRes.status}):\n`;
-    report += JSON.stringify(listsData.items || listsData, null, 2);
-    report += '\n\n';
-
-    // Gleiche Einstellungen wie syncGoogleTasks() (showCompleted=true,
-    // maxResults=100, volle Pagination) -- sonst zeigt das Debug-Tool
-    // etwas anderes als das, was tatsächlich synchronisiert wird.
-    let alleItems = [];
-    let pageToken = null;
-    let seiten = 0;
-    do {
-      const url = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks'
-        + '?showCompleted=true&showHidden=true&maxResults=100'
-        + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
-      const tasksRes = await fetch(url, {
-        headers: { Authorization: `Bearer ${googleAccessToken.token}` },
-      });
-      const tasksData = await tasksRes.json();
-      if (!tasksRes.ok) {
-        report += `TASKS Fehler (Status ${tasksRes.status}):\n` + JSON.stringify(tasksData, null, 2);
-        out.textContent = report;
-        return;
-      }
-      alleItems = alleItems.concat(tasksData.items || []);
-      pageToken = tasksData.nextPageToken || null;
-      seiten++;
-    } while (pageToken);
-
-    report += `TASKS aus @default (${seiten} Seite(n), ${alleItems.length} gesamt):\n`;
-    report += JSON.stringify(alleItems, null, 2);
+    for (const l of listen) {
+      const items = await ladeTasksDerListe(l.id);
+      const offen = items.filter(t => t.status !== 'completed');
+      report += `━━━ LISTE: "${l.title}" (${items.length} gesamt, ${offen.length} offen) ━━━\n`;
+      items
+        .sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'))
+        .forEach(t => {
+          const status = t.status === 'completed' ? `✓ erledigt ${fmt(t.completed)}` : 'offen';
+          report += `  • ${t.title || '(ohne Titel)'}  | fällig: ${fmt(t.due)} | ${status}\n`;
+        });
+      report += '\n';
+    }
 
     out.textContent = report;
   } catch (err) {
@@ -4767,47 +4900,73 @@ async function syncGoogleCalendar() {
 }
 
 // ── GOOGLE TASKS ──────────────────────────────────────────────
+// Alle Aufgabenlisten des Kontos holen (der Google Kalender zeigt Aufgaben
+// aus ALLEN Listen an -- nur "@default" abzufragen hat Aufgaben aus weiteren
+// Listen unterschlagen).
+async function ladeAlleTasklisten() {
+  let listen = [];
+  let pageToken = null;
+  do {
+    const url = 'https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=100'
+      + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${googleAccessToken.token}` } });
+    if (!res.ok) throw new Error('Tasklisten API: ' + res.status);
+    const data = await res.json();
+    listen = listen.concat(data.items || []);
+    pageToken = data.nextPageToken || null;
+  } while (pageToken);
+  return listen; // [{ id, title }]
+}
+
+// Alle Tasks EINER Liste, inkl. Pagination (Google liefert pro Seite nur
+// begrenzt viele Einträge).
+async function ladeTasksDerListe(listId) {
+  let items = [];
+  let pageToken = null;
+  do {
+    const url = `https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(listId)}/tasks`
+      + '?showCompleted=true&showHidden=true&maxResults=100'
+      + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${googleAccessToken.token}` } });
+    if (!res.ok) throw new Error('Tasks API: ' + res.status);
+    const data = await res.json();
+    items = items.concat(data.items || []);
+    pageToken = data.nextPageToken || null;
+  } while (pageToken);
+  return items;
+}
+
 async function syncGoogleTasks() {
   if (!isGoogleConnected()) return;
   try {
-    // Google Tasks liefert standardmäßig nur ~20 Ergebnisse pro Anfrage
-    // (Pagination via nextPageToken) -- ohne das komplett zu durchlaufen,
-    // fehlen bei mehr als ~20 Tasks einfach die "hinteren" Einträge, z.B.
-    // ältere oder alphabetisch spätere Tasks wie "Bad putzen". maxResults=100
-    // reduziert zusätzlich die nötige Seitenzahl in den meisten Fällen.
-    let alleItems = [];
-    let pageToken = null;
-    do {
-      const url = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks'
-        + '?showCompleted=true&showHidden=true&maxResults=100'
-        + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${googleAccessToken.token}` },
-      });
-      if (!res.ok) throw new Error('Tasks API: ' + res.status);
-      const data = await res.json();
-      alleItems = alleItems.concat(data.items || []);
-      pageToken = data.nextPageToken || null;
-    } while (pageToken);
+    const listen = await ladeAlleTasklisten();
+    const mehrereListen = listen.length > 1;
 
-    const gTasks = alleItems.map(t => {
-      // Google liefert 'due' im Format "2026-06-22T00:00:00.000Z" -- das ist
-      // absichtlich immer UTC-Mitternacht (Tasks kennen keine Uhrzeit), daher
-      // reicht hier ein direktes Datum-Parsing ohne Zeitzonen-Korrektur.
-      const dueDate = t.due ? t.due.slice(0, 10) : null;
-      const id = 'g_' + t.id;
-      return {
-        id,
-        googleTaskId: t.id, // rohe ID ohne Präfix, für den Rückschreib-Call
-        title: t.title || '(Ohne Titel)',
-        duration: 0,
-        done: t.status === 'completed',
-        // Google liefert den Erledigt-Zeitpunkt mit -> Auslöser für Folgeaufgaben
-        erledigtAm: t.completed ? toLocalDateStr(new Date(t.completed)) : null,
-        source: 'google',
-        date: dueDate, // null = kein Fälligkeitsdatum gesetzt
-      };
-    });
+    const proListe = await Promise.all(listen.map(async l => {
+      const items = await ladeTasksDerListe(l.id);
+      return items.map(t => {
+        // Google liefert 'due' im Format "2026-06-22T00:00:00.000Z" -- das ist
+        // absichtlich immer UTC-Mitternacht (Tasks kennen keine Uhrzeit), daher
+        // reicht hier ein direktes Datum-Parsing ohne Zeitzonen-Korrektur.
+        const dueDate = t.due ? t.due.slice(0, 10) : null;
+        return {
+          id: 'g_' + t.id,
+          googleTaskId: t.id,  // rohe ID ohne Präfix, für den Rückschreib-Call
+          googleListId: l.id,  // Liste merken -> Zurückschreiben in die richtige Liste
+          listName: l.title || '',
+          // Listenname nur anzeigen, wenn es überhaupt mehrere Listen gibt
+          subtitle: mehrereListen && l.title ? `Liste: ${l.title}` : '',
+          title: t.title || '(Ohne Titel)',
+          duration: 0,
+          done: t.status === 'completed',
+          // Google liefert den Erledigt-Zeitpunkt mit -> Auslöser für Folgeaufgaben
+          erledigtAm: t.completed ? toLocalDateStr(new Date(t.completed)) : null,
+          source: 'google',
+          date: dueDate, // null = kein Fälligkeitsdatum gesetzt
+        };
+      });
+    }));
+    const gTasks = proListe.flat();
 
     const manual = state.aufgaben.filter(a => a.source !== 'google');
     save('aufgaben', [...manual, ...gTasks]);
@@ -4827,15 +4986,17 @@ async function schreibeGoogleTaskStatus(aufgabe, done) {
   if (!isGoogleConnected()) return;
 
   try {
+    const listId = aufgabe.googleListId || '@default';
     const res = await fetch(
-      `https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/${aufgabe.googleTaskId}`,
+      `https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(listId)}/tasks/${aufgabe.googleTaskId}`,
       {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${googleAccessToken.token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: done ? 'completed' : 'needsAction' }),
+        // Beim Zurücksetzen muss "completed" explizit geleert werden
+        body: JSON.stringify(done ? { status: 'completed' } : { status: 'needsAction', completed: null }),
       }
     );
     if (!res.ok) throw new Error('Tasks API PATCH: ' + res.status);
@@ -4853,7 +5014,7 @@ async function schreibeGoogleTaskStatus(aufgabe, done) {
 // Version (kein Konfliktabgleich) -- das ist bewusst so einfach gehalten.
 
 const VORRAT_SHEET_SPALTEN = ['ID','Artikel','Menge','Einheit','Kategorie','Ablaufdatum','Lagerort','Einzelmenge','Anzahl','IstRest','AngelegtAm','ZuletztGeändert'];
-const WARTUNG_SHEET_SPALTEN = ['ID','Gerät','Aufgabe','Intervall','ZuletztErledigt','NächsteFälligkeit','Notiz','ZuletztGeändert'];
+const WARTUNG_SHEET_SPALTEN = ['ID','Gerät','Aufgabe','Intervall','ZuletztErledigt','NächsteFälligkeit','Notiz','ZuletztGeändert','Historie'];
 
 // Zwei getrennte Spreadsheets möglich: eins für Vorrat, eins für Wartung.
 // Liegen beide im selben Spreadsheet, einfach zweimal denselben Link eintragen.
@@ -5098,20 +5259,32 @@ function wartungItemZuZeile(w) {
     w.id, w.geraet, w.aufgabe, w.intervall ?? '',
     datumZuSheet(w.zuletztErledigt), datumZuSheet(w.naechsteFaelligkeit),
     w.notiz ?? '', new Date().toISOString(),
+    // Historie als "TT.MM.JJJJ, TT.MM.JJJJ, ..." (neueste zuerst)
+    (w.historie || []).map(datumZuSheet).join(', '),
   ];
 }
 function zeileZuWartungItem(zeile) {
-  const [id, geraet, aufgabe, intervall, zuletzt, naechste, notiz] = zeile;
+  const [id, geraet, aufgabe, intervall, zuletzt, naechste, notiz, , historieRaw] = zeile;
   if (!geraet && !aufgabe) return null;
+  const zuletztErledigt = datumVonSheet(zuletzt);
+  let historie = String(historieRaw || '').split(/[,;]\s*/).map(datumVonSheet).filter(Boolean);
+  // Ältere Zeilen ohne Historie: wenigstens "zuletzt erledigt" übernehmen
+  if (!historie.length && zuletztErledigt) historie = [zuletztErledigt];
   return {
     id: id || ('wt_' + uid()),
     geraet: geraet || '',
     aufgabe: aufgabe || '',
     intervall: intervall !== '' && intervall != null ? parseInt(intervall, 10) : null,
-    zuletztErledigt: datumVonSheet(zuletzt),
+    zuletztErledigt,
     naechsteFaelligkeit: datumVonSheet(naechste),
     notiz: notiz || '',
+    historie: sortiereHistorie(historie),
   };
+}
+
+// Historie: eindeutige Daten, neueste zuerst
+function sortiereHistorie(liste) {
+  return [...new Set((liste || []).filter(Boolean))].sort((a, b) => b.localeCompare(a));
 }
 
 async function ladeWartungVonSheets() {
