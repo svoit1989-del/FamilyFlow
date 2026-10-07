@@ -1723,8 +1723,8 @@ select.modal-input { background: #fff; }
       <div class="modal-box">
         <div class="modal-title" id="vorratModalTitel">Artikel anlegen</div>
         <label class="modal-label">Artikel</label>
-        <input class="modal-input" id="vmArtikel" list="vmArtikelListe" autocomplete="off" placeholder="z.B. Haferflocken" />
-        <datalist id="vmArtikelListe"></datalist>
+        <input class="modal-input" id="vmArtikel" autocomplete="off" placeholder="z.B. Haferflocken" />
+        <div class="vorschlag-chips" id="vmArtikelChips"></div>
         <div class="modal-grid2">
           <div>
             <label class="modal-label">Menge (gesamt)</label>
@@ -1758,8 +1758,8 @@ select.modal-input { background: #fff; }
           <option>Haushalt</option><option>Sonstiges</option>
         </select>
         <label class="modal-label">Lagerort</label>
-        <input class="modal-input" id="vmLagerort" list="vmLagerortListe" placeholder="z.B. Keller" />
-        <datalist id="vmLagerortListe"></datalist>
+        <input class="modal-input" id="vmLagerort" autocomplete="off" placeholder="z.B. Keller" />
+        <div class="vorschlag-chips" id="vmLagerortChips"></div>
         <div id="vmEingefrorenWrap" style="display:none;">
           <label class="modal-label">❄️ Eingefroren am</label>
           <input class="modal-input" id="vmEingefroren" type="date" />
@@ -1808,16 +1808,16 @@ select.modal-input { background: #fff; }
       <div class="modal-box">
         <div class="modal-title" id="regelModalTitel">Regel anlegen</div>
         <label class="modal-label">Auslöser (Wörter im Aufgabentitel)</label>
-        <input class="modal-input" id="rmAusloeser" list="rmAusloeserListe" autocomplete="off" placeholder="z.B. wäsche waschen" />
-        <datalist id="rmAusloeserListe"></datalist>
+        <input class="modal-input" id="rmAusloeser" autocomplete="off" placeholder="z.B. wäsche waschen" />
+        <div class="vorschlag-chips" id="rmAusloeserChips"></div>
         <label class="modal-label">Typ</label>
         <select class="modal-input" id="rmTyp">
           <option value="folge">Folgeaufgabe</option>
           <option value="material">Material (für Einkaufsliste)</option>
         </select>
         <label class="modal-label" id="rmInhaltLabel">Folgeaufgabe</label>
-        <input class="modal-input" id="rmInhalt" list="rmInhaltListe" autocomplete="off" placeholder="z.B. Trockner starten" />
-        <datalist id="rmInhaltListe"></datalist>
+        <input class="modal-input" id="rmInhalt" autocomplete="off" placeholder="z.B. Trockner starten" />
+        <div class="vorschlag-chips" id="rmInhaltChips"></div>
         <div id="rmVersatzWrap">
           <label class="modal-label">Wann nach dem Abhaken?</label>
           <select class="modal-input" id="rmVersatz">
@@ -2105,6 +2105,40 @@ const EINHEIT_PLURAL_MAP = {
   'bunde': 'bund', 'bündel': 'bund',
   'päckchen': 'pck', 'pack': 'pck', 'packung': 'pck', 'packungen': 'pck',
 };
+// ── EINHEITEN-UMRECHNUNG ──────────────────────────────────────
+// Gewicht und Volumen lassen sich ineinander umrechnen (kg<->g, l<->ml).
+// Intern wird damit verglichen/summiert; angezeigt wird weiter in der
+// Einheit, in der ein Artikel erfasst wurde.
+const EINHEIT_BASIS = { g: ['g', 1], kg: ['g', 1000], ml: ['ml', 1], l: ['ml', 1000] };
+const runde3 = x => Math.round(x * 1000) / 1000;
+
+function inBasis(menge, einheit) {
+  const b = EINHEIT_BASIS[einheit];
+  if (menge === null || menge === undefined || !b) return { menge, einheit };
+  return { menge: runde3(menge * b[1]), einheit: b[0] };
+}
+
+// Menge von einer Einheit in eine andere umrechnen. null = nicht umrechenbar
+// (z.B. g -> Stück).
+function rechneUm(menge, von, nach) {
+  if (menge === null || menge === undefined) return null;
+  if (von === nach) return menge;
+  const a = EINHEIT_BASIS[von], b = EINHEIT_BASIS[nach];
+  if (!a || !b || a[0] !== b[0]) return null;
+  return runde3(menge * a[1] / b[1]);
+}
+
+// Anzeige mit deutschem Komma; optional ab 1000 g -> kg bzw. 1000 ml -> l
+function formatMenge(menge, einheit, hochstufen = true) {
+  if (menge === null || menge === undefined) return '';
+  let m = menge, e = einheit;
+  if (hochstufen && e === 'g' && m >= 1000)  { m = m / 1000; e = 'kg'; }
+  if (hochstufen && e === 'ml' && m >= 1000) { m = m / 1000; e = 'l'; }
+  const zahl = runde3(m).toLocaleString('de-DE', { maximumFractionDigits: 3 });
+  const anzeige = { st: 'St', scheibe: 'Scheiben', pck: 'Pck' }[e] || e || '';
+  return `${zahl} ${anzeige}`.trim();
+}
+
 function normalisiereEinheit(wort) {
   const w = wort.toLowerCase().replace('.', '');
   if (EINHEITEN.includes(w)) return w;
@@ -3051,13 +3085,10 @@ function renderEinkauf() {
 
   function mengeStrFor(item) {
     if (item.menge !== null && item.einheit && item.count > 1) {
-      const einh = item.einheit === 'st' ? 'St' : item.einheit;
-      const gesamt = Math.round(item.menge * 100) / 100;
-      const einzel = Math.round((item.menge / item.count) * 100) / 100;
-      return `<span class="einkauf-menge">${einzel}${einh} × ${item.count} = ${gesamt}${einh}</span>`;
+      const einzel = formatMenge(item.menge / item.count, item.einheit, false);
+      return `<span class="einkauf-menge">${einzel} × ${item.count} = ${formatMenge(item.menge, item.einheit)}</span>`;
     } else if (item.menge !== null && item.einheit) {
-      const einh = item.einheit === 'st' ? 'St' : item.einheit;
-      return `<span class="einkauf-menge">${item.menge}${einh}</span>`;
+      return `<span class="einkauf-menge">${formatMenge(item.menge, item.einheit)}</span>`;
     } else if (item.count > 1) {
       return `<span class="einkauf-count">×${item.count}</span>`;
     }
@@ -3262,7 +3293,9 @@ function renderVorrat() {
     const itemsHtml = katGruppen.map(kat => `
       <div class="vorrat-kategorie">
         <div class="vorrat-kat-header">${kat}</div>
-        ${nachOrt[ort][kat].map(v => renderVorratItem(v)).join('')}
+        ${nachOrt[ort][kat]
+            .slice().sort((a, b) => a.title.localeCompare(b.title, 'de', { sensitivity: 'base' }))
+            .map(v => renderVorratItem(v)).join('')}
       </div>
     `).join('');
 
@@ -3277,12 +3310,12 @@ function renderVorrat() {
   wrap.querySelectorAll('.vorrat-menge-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.vid;
-      const delta = parseInt(btn.dataset.delta, 10);
+      const delta = parseFloat(btn.dataset.delta);
       const vorrat = LS.get('ff_vorrat', []);
       const eintrag = vorrat.find(v => v.id === id);
       if (!eintrag || eintrag.menge === null) return;
 
-      const neueMenge = Math.max(0, eintrag.menge + delta);
+      const neueMenge = Math.max(0, runde3(eintrag.menge + delta));
 
       // Reste: bei Menge 0 komplett aus der Liste entfernen (aufgegessen).
       // Normaler Vorrat bleibt mit Menge 0 sichtbar (z.B. "Nachkaufen nötig").
@@ -3307,14 +3340,14 @@ function renderVorrat() {
   wrap.querySelectorAll('.vorrat-anzahl-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.vid;
-      const delta = parseInt(btn.dataset.delta, 10);
+      const delta = parseFloat(btn.dataset.delta);
       const vorrat = LS.get('ff_vorrat', []);
       const eintrag = vorrat.find(v => v.id === id);
       if (!eintrag || eintrag.einzelmenge === null) return;
 
       const neueAnzahl = Math.max(0, (eintrag.anzahl || 0) + delta);
       const mengeDelta = delta * eintrag.einzelmenge;
-      const neueMenge = Math.max(0, (eintrag.menge || 0) + mengeDelta);
+      const neueMenge = Math.max(0, runde3((eintrag.menge || 0) + mengeDelta));
 
       let updated;
       if (eintrag.istRest && neueMenge === 0) {
@@ -3338,14 +3371,15 @@ function renderVorrat() {
 // Schrittgröße für den Menge-Zähler: 10 bei Gewicht/Volumen (g/kg/ml/l),
 // 1 bei Stück-basierten Einheiten (St, Becher, Ei, Packung, etc.).
 function getVorratSchritt(einheit) {
-  return ['g', 'kg', 'ml', 'l'].includes(einheit) ? 10 : 1;
+  if (['g', 'ml'].includes(einheit)) return 10;
+  if (['kg', 'l'].includes(einheit)) return 0.1;
+  return 1;
 }
 
 function renderVorratItem(v) {
   let mengeStr = '–';
   if (v.menge !== null && v.einheit) {
-    const einh = v.einheit === 'st' ? 'St' : v.einheit;
-    mengeStr = `${v.menge}${einh}`;
+    mengeStr = formatMenge(v.menge, v.einheit, false);
   }
 
   let badge = '';
@@ -3475,6 +3509,46 @@ function getWartungKatalog() {
 
 const escAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
+// ── VORSCHLAGS-CHIPS (für alle Masken) ────────────────────────
+// Ersetzt die Browser-Vorschlagslisten (<datalist>), die auf dem Handy nur
+// einen Pfeil zeigen bzw. Einträge versteckt über der Tastatur anbieten.
+//  - leeres Feld: die ersten Vorschläge alphabetisch
+//  - beim Tippen: Treffer, die mit dem Getippten BEGINNEN, zuerst
+//  - exakt passender Wert eingetragen: keine Chips mehr
+function zeigeChips(containerId, eingabeId, kandidaten, beiWahl, max = 12) {
+  const box = document.getElementById(containerId);
+  const eingabe = document.getElementById(eingabeId);
+  if (!box || !eingabe) return;
+
+  const q = normKey(eingabe.value);
+  const liste = [...new Set((kandidaten || []).filter(Boolean).map(s => String(s).trim()))];
+  if (q && liste.some(k => normKey(k) === q)) { box.innerHTML = ''; return; }
+
+  const treffer = liste
+    .filter(k => !q || normKey(k).includes(q))
+    .sort((a, b) => {
+      const pa = normKey(a).startsWith(q) ? 0 : 1;
+      const pb = normKey(b).startsWith(q) ? 0 : 1;
+      return pa - pb || a.localeCompare(b, 'de', { sensitivity: 'base' });
+    })
+    .slice(0, max);
+
+  box.innerHTML = treffer
+    .map(k => `<button type="button" class="vorschlag-chip" data-wert="${escAttr(k)}">${escAttr(k)}</button>`)
+    .join('');
+
+  box.querySelectorAll('.vorschlag-chip').forEach(b => {
+    // pointerdown + preventDefault: Feld behält den Fokus, Tastatur bleibt
+    // offen, nichts verrutscht -> der Tipp trifft sicher den Chip
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      eingabe.value = b.dataset.wert;
+      box.innerHTML = '';
+      if (beiWahl) beiWahl(b.dataset.wert);
+    });
+  });
+}
+
 // ── VORRAT EINGABEMASKE ───────────────────────────────────────
 let _vorratEditId = null; // null = neuer Artikel
 
@@ -3495,18 +3569,28 @@ function openVorratModal(id) {
   document.getElementById('vmEingefroren').value = v?.angelegtAm || today();
   document.getElementById('vmLoeschen').style.display = v ? '' : 'none';
 
-  // Vorschläge für Lagerort: Standard-Orte + alle bereits genutzten
+  // Vorschläge: Lagerorte (Standard + bereits genutzte) und alle bekannten Lebensmittel
   const genutzt = LS.get('ff_vorrat', []).map(x => x.lagerort).filter(Boolean);
-  const orte = [...new Set([...VORRAT_LAGERORTE, ...genutzt])];
-  document.getElementById('vmLagerortListe').innerHTML = orte.map(o => `<option value="${escAttr(o)}">`).join('');
-
-  // Vorschläge für Artikel: alle bekannten Lebensmittel, alphabetisch
-  const katalog = Object.values(getVorratKatalog()).sort((a, b) => a.title.localeCompare(b.title, 'de'));
-  document.getElementById('vmArtikelListe').innerHTML = katalog
-    .map(e => `<option value="${escAttr(e.title)}">`).join('');
+  _vmLagerortVorschlaege = [...new Set([...VORRAT_LAGERORTE, ...genutzt])];
+  _vmArtikelVorschlaege = Object.values(getVorratKatalog()).map(e => e.title);
 
   aktualisiereEingefrorenFeld();
+  renderVorratChips();
   document.getElementById('vorratModal').classList.add('open');
+}
+
+let _vmArtikelVorschlaege = [];
+let _vmLagerortVorschlaege = [];
+
+function renderVorratChips() {
+  zeigeChips('vmArtikelChips', 'vmArtikel', _vmArtikelVorschlaege, () => {
+    fuelleVorratAusKatalog(); // Einheit, Kategorie, Lagerort, Packungsgröße vom letzten Mal
+    renderVorratChips();
+  });
+  zeigeChips('vmLagerortChips', 'vmLagerort', _vmLagerortVorschlaege, () => {
+    aktualisiereEingefrorenFeld();
+    renderVorratChips();
+  }, 8);
 }
 
 // Bekannten Artikel gewählt -> Eigenschaften vom letzten Mal vorausfüllen.
@@ -3531,9 +3615,8 @@ function aktualisiereEingefrorenFeld() {
 function setupVorratModal() {
   const close = () => document.getElementById('vorratModal').classList.remove('open');
   document.getElementById('vmAbbrechen').addEventListener('click', close);
-  document.getElementById('vmLagerort').addEventListener('input', aktualisiereEingefrorenFeld);
-  document.getElementById('vmArtikel').addEventListener('change', fuelleVorratAusKatalog);
-  document.getElementById('vmArtikel').addEventListener('input', fuelleVorratAusKatalog);
+  document.getElementById('vmLagerort').addEventListener('input', () => { aktualisiereEingefrorenFeld(); renderVorratChips(); });
+  document.getElementById('vmArtikel').addEventListener('input', () => { fuelleVorratAusKatalog(); renderVorratChips(); });
 
   // Packungsgröße × Anzahl füllt die Gesamtmenge automatisch vor
   const autoMenge = () => {
@@ -3807,13 +3890,15 @@ function renderWartungChips() {
               ${vorhanden ? `data-vorhanden-id="${vorhanden.id}"` : ''}>${a}${vorhanden ? ' · vorhanden' : ''}</button>`;
   }).join('');
 
-  document.querySelectorAll('#wmGeraetChips .vorschlag-chip').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#wmGeraetChips .vorschlag-chip').forEach(b => b.addEventListener('pointerdown', e => {
+    e.preventDefault();
     document.getElementById('wmGeraet').value = b.dataset.geraet;
     renderWartungChips();
     fuelleWartungAusKatalog();
     document.getElementById('wmAufgabe').focus();
   }));
-  document.querySelectorAll('#wmAufgabeChips .vorschlag-chip').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#wmAufgabeChips .vorschlag-chip').forEach(b => b.addEventListener('pointerdown', e => {
+    e.preventDefault();
     if (b.dataset.vorhandenId) { openWartungModal(b.dataset.vorhandenId); return; } // statt Duplikat: vorhandene öffnen
     document.getElementById('wmAufgabe').value = b.dataset.aufgabe;
     fuelleWartungAusKatalog();
@@ -3960,14 +4045,21 @@ function openRegelModal(id, vorbelegung = {}) {
   document.getElementById('rmLoeschen').style.display = r ? '' : 'none';
 
   // Auslöser-Vorschläge: bestehende Auslöser + Titel vorhandener Aufgaben
-  const ausloeser = [...new Set([
+  _rmAusloeserVorschlaege = [...new Set([
     ...getRegeln().map(x => x.ausloeser.trim()),
     ...state.aufgaben.map(a => (a.title || '').trim().toLowerCase()).filter(Boolean),
-  ])].sort((a, b) => a.localeCompare(b, 'de'));
-  document.getElementById('rmAusloeserListe').innerHTML = ausloeser.map(a => `<option value="${escAttr(a)}">`).join('');
+  ])];
 
   aktualisiereRegelTyp();
   document.getElementById('regelModal').classList.add('open');
+}
+
+let _rmAusloeserVorschlaege = [];
+let _rmInhaltVorschlaege = [];
+
+function renderRegelChips() {
+  zeigeChips('rmAusloeserChips', 'rmAusloeser', _rmAusloeserVorschlaege, renderRegelChips, 8);
+  zeigeChips('rmInhaltChips', 'rmInhalt', _rmInhaltVorschlaege, renderRegelChips);
 }
 
 // Feldbeschriftung, Vorschläge und Versatz passend zum Typ umschalten
@@ -3978,12 +4070,11 @@ function aktualisiereRegelTyp() {
   document.getElementById('rmInhalt').placeholder = istMaterial ? 'z.B. Badreiniger' : 'z.B. Trockner starten';
   document.getElementById('rmVersatzWrap').style.display = istMaterial ? 'none' : '';
 
-  const vorschlaege = istMaterial
+  // Material: bekannte Lebensmittel/Artikel; Folgeaufgabe: bereits genutzte Folgeaufgaben
+  _rmInhaltVorschlaege = istMaterial
     ? Object.values(getVorratKatalog()).map(e => e.title)
     : getRegeln().filter(r => r.typ === 'folge').map(r => r.inhalt);
-  document.getElementById('rmInhaltListe').innerHTML = [...new Set(vorschlaege)]
-    .sort((a, b) => a.localeCompare(b, 'de'))
-    .map(x => `<option value="${escAttr(x)}">`).join('');
+  renderRegelChips();
 }
 
 // Nach jeder Regeländerung: speichern, ins Sheet schreiben, alles neu bewerten
@@ -4000,6 +4091,8 @@ function setupRegelModal() {
   const close = () => document.getElementById('regelModal').classList.remove('open');
   document.getElementById('rmAbbrechen').addEventListener('click', close);
   document.getElementById('rmTyp').addEventListener('change', aktualisiereRegelTyp);
+  document.getElementById('rmAusloeser').addEventListener('input', renderRegelChips);
+  document.getElementById('rmInhalt').addEventListener('input', renderRegelChips);
 
   document.getElementById('rmSpeichern').addEventListener('click', () => {
     const ausloeser = document.getElementById('rmAusloeser').value.trim();
@@ -5724,8 +5817,9 @@ function istImVorratGedeckt(zutat) {
   if (zutat.menge === null || !zutat.einheit) return false; // ohne Menge kein Abgleich möglich
   const vorrat = LS.get('ff_vorrat', []);
   const eintrag = vorrat.find(v => v.title.toLowerCase() === zutat.title.toLowerCase());
-  if (!eintrag || eintrag.menge === null || eintrag.einheit !== zutat.einheit) return false;
-  return eintrag.menge >= zutat.menge;
+  if (!eintrag || eintrag.menge === null) return false;
+  const verfuegbar = rechneUm(eintrag.menge, eintrag.einheit, zutat.einheit);
+  return verfuegbar !== null && verfuegbar >= zutat.menge;
 }
 
 // Zieht die verbrauchte Menge vom Vorrat ab (z.B. wenn eine Mahlzeit als
@@ -5752,8 +5846,10 @@ function verbraucheAusVorrat(titel, menge, einheit) {
   const vorrat = LS.get('ff_vorrat', []);
   const updated = vorrat.map(v => {
     if (v.title.toLowerCase() !== titel.toLowerCase()) return v;
-    if (v.menge === null || v.einheit !== einheit) return v;
-    return { ...v, menge: Math.max(0, Math.round((v.menge - menge) * 100) / 100) };
+    if (v.menge === null) return v;
+    const abzug = rechneUm(menge, einheit, v.einheit); // z.B. 190 g von 1 kg
+    if (abzug === null) return v;                       // nicht umrechenbar
+    return { ...v, menge: Math.max(0, runde3(v.menge - abzug)) };
   });
   LS.set('ff_vorrat', updated);
 }
@@ -5786,9 +5882,11 @@ function berechneVorratAbgleich(bedarfProZutatMap) {
 
     const vorrat = LS.get('ff_vorrat', []);
     const eintrag = vorrat.find(v => v.title.toLowerCase() === z.title.toLowerCase());
-    const vorratMenge = (eintrag && eintrag.menge !== null && eintrag.einheit === z.einheit) ? eintrag.menge : 0;
+    const vorratMenge = (eintrag && eintrag.menge !== null)
+      ? (rechneUm(eintrag.menge, eintrag.einheit, z.einheit) ?? 0)   // 1 kg Vorrat deckt 500 g Bedarf
+      : 0;
 
-    const rest = Math.round((z.menge - vorratMenge) * 100) / 100;
+    const rest = runde3(z.menge - vorratMenge);
     if (rest > 0) {
       nachVorratAbgleich.push({ ...z, menge: rest }); // nur die Restmenge einkaufen
     }
@@ -5807,9 +5905,15 @@ function aktualisiereEinkaufslisteGegenVorrat() {
   if (!bedarfListe.length) { aktualisiereMaterialEinkauf(); return; } // kein Rezeptbedarf, Materialien trotzdem prüfen
 
   const bedarfProZutat = new Map();
-  bedarfListe.forEach(z => {
+  bedarfListe.forEach(zRoh => {
+    const z = { ...zRoh, ...inBasis(zRoh.menge, zRoh.einheit) };
     const key = z.title.toLowerCase().trim() + '|' + (z.einheit || '');
-    bedarfProZutat.set(key, z);
+    if (bedarfProZutat.has(key)) {
+      const e = bedarfProZutat.get(key);
+      e.menge = (z.menge !== null && e.menge !== null) ? runde3(e.menge + z.menge) : null;
+    } else {
+      bedarfProZutat.set(key, z);
+    }
   });
 
   const nachVorratAbgleich = berechneVorratAbgleich(bedarfProZutat);
@@ -5939,11 +6043,13 @@ async function syncTrello() {
     // sonst "passt" jede einzelne Zeile in den vollen Bestand, obwohl die
     // Woche insgesamt mehr braucht als vorrätig ist.
     const bedarfProZutat = new Map();
-    einkaufNeu.forEach(z => {
+    einkaufNeu.forEach(zRoh => {
+      // 1 kg + 500 g -> beides in g, damit es unter einem Schlüssel summiert wird
+      const z = { ...zRoh, ...inBasis(zRoh.menge, zRoh.einheit) };
       const key = z.title.toLowerCase().trim() + '|' + (z.einheit || '');
       if (bedarfProZutat.has(key)) {
         const e = bedarfProZutat.get(key);
-        if (z.menge !== null && e.menge !== null) e.menge += z.menge;
+        if (z.menge !== null && e.menge !== null) e.menge = runde3(e.menge + z.menge);
         else e.menge = null; // eine der Mengen unbekannt -> Summe unsicher, kein Abgleich
       } else {
         bedarfProZutat.set(key, { ...z });
@@ -6212,8 +6318,10 @@ function dedupeEinkauf(items) {
     if (map.has(key)) {
       const existing = map.get(key);
       existing.count = (existing.count || 1) + 1;
-      if (i.menge !== null && existing.menge !== null && existing.einheit === i.einheit) {
-        existing.menge = Math.round((existing.menge + i.menge) * 100) / 100;
+      const passend = (i.menge !== null && existing.menge !== null)
+        ? rechneUm(i.menge, i.einheit, existing.einheit) : null;
+      if (passend !== null) {
+        existing.menge = runde3(existing.menge + passend);
       } else {
         existing.menge = null; // Einheiten passen nicht → kein sinnvolles Summieren
       }
