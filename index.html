@@ -981,6 +981,17 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   margin-top: 2px;
 }
 .connect-status.connected { color: var(--status-ok); }
+.connect-status.sync-warnung { color: var(--status-mid); font-weight: 700; }
+.sheets-fehler {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--status-red);
+  background: rgba(184,64,64,0.08);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.sheets-fehler div + div { margin-top: 4px; }
 .connect-btn {
   background: var(--forest);
   color: var(--cream);
@@ -1582,6 +1593,7 @@ select.modal-input { background: #fff; }
           <div class="connect-info">
             <div class="connect-name">📊 Google Sheets (Vorrat &amp; Wartung)</div>
             <div class="connect-status" id="sheetsStatus">Nicht verbunden</div>
+            <div class="sheets-fehler" id="sheetsFehler" style="display:none;"></div>
           </div>
           <div class="connect-btn-gruppe">
             <button class="connect-btn secondary" id="sheetsReloadBtn" style="display:none;" title="Neu aus Sheets laden">↻</button>
@@ -4386,25 +4398,47 @@ function renderConnections() {
   const reloadBtn = document.getElementById('sheetsReloadBtn');
   reloadBtn.style.display = 'none';
 
+  // Nicht übertragene Änderungen sichtbar machen
+  const offen = Object.keys(getSyncOffen()).map(b => SYNC_LABEL[b] || b);
+  const offenText = offen.length ? ` · ⚠ nicht übertragen: ${offen.join(', ')}` : '';
+  const fehler = LS.get('ff_sheets_fehler', {});
+  const fehlerEl = document.getElementById('sheetsFehler');
+  if (fehlerEl) {
+    const eintraege = Object.entries(fehler);
+    fehlerEl.innerHTML = eintraege.map(([b, t]) => `<div>⚠ <b>${SYNC_LABEL[b] || b}:</b> ${t}</div>`).join('');
+    fehlerEl.style.display = eintraege.length ? '' : 'none';
+  }
+
+  // ↻: holt Änderungen anderer Personen UND überträgt offene eigene Änderungen.
+  // Wird per Tipp ausgelöst -> eine abgelaufene Google-Anmeldung kann dabei
+  // erneuert werden.
+  reloadBtn.onclick = async () => {
+    if (!(await stelleGoogleTokenSicher())) {
+      showToast('Google-Anmeldung nötig – bitte bei Google auf "Verbinden".');
+      return;
+    }
+    showToast('Synchronisiere mit Sheets…');
+    await syncSheets();
+    aktualisiereEinkaufslisteGegenVorrat();
+    refreshAllViews();
+    renderFamilie();
+    showToast(Object.keys(getSyncOffen()).length ? 'Teilweise übertragen – bitte erneut versuchen.' : 'Sheets synchron ✓');
+  };
+
   if (teile.length && isGoogleConnected()) {
-    sStatus.textContent = `Verbunden ✓ (${teile.join(' + ')})`;
-    sStatus.classList.add('connected');
+    sStatus.textContent = `Verbunden ✓ (${teile.join(' + ')})${offenText}`;
+    sStatus.classList.toggle('connected', !offen.length);
+    sStatus.classList.toggle('sync-warnung', !!offen.length);
     sBtn.textContent = 'Ändern';
     sBtn.onclick = openSheetsModal;
-    // Neu laden: holt Änderungen, die andere Personen zwischenzeitlich gemacht haben
     reloadBtn.style.display = '';
-    reloadBtn.onclick = async () => {
-      showToast('Lade von Sheets…');
-      await syncSheets();
-      aktualisiereEinkaufslisteGegenVorrat();
-      refreshAllViews();
-      showToast('Sheets geladen ✓');
-    };
   } else if (teile.length) {
-    sStatus.textContent = 'Google zuerst verbinden';
+    sStatus.textContent = (offen.length ? 'Anmeldung abgelaufen' : 'Google-Anmeldung abgelaufen') + offenText;
     sStatus.classList.remove('connected');
+    sStatus.classList.toggle('sync-warnung', !!offen.length);
     sBtn.textContent = 'Ändern';
     sBtn.onclick = openSheetsModal;
+    reloadBtn.style.display = ''; // ↻ erneuert die Anmeldung und überträgt
   } else {
     sStatus.textContent = 'Nicht verbunden';
     sStatus.classList.remove('connected');
@@ -4772,8 +4806,13 @@ function initGoogleAuth() {
     client_id: GOOGLE_CLIENT_ID,
     scope: GOOGLE_SCOPES,
     callback: (resp) => {
+      // Stille Erneuerung (stelleGoogleTokenSicher) wartet auf dieses Ergebnis
+      const warter = _tokenErneuerungWarter;
+      _tokenErneuerungWarter = null;
+
       if (resp.error) {
         console.error('Google Auth Fehler:', resp);
+        if (warter) { warter(false); return; }
         showToast('Google-Anmeldung fehlgeschlagen.');
         return;
       }
@@ -4782,9 +4821,46 @@ function initGoogleAuth() {
         expiresAt: Date.now() + (resp.expires_in * 1000) - 60000,
       };
       LS.set('ff_google_token', googleAccessToken);
+      if (warter) { warter(true); renderConnectionsSicher(); return; }
       onGoogleConnected();
     },
+    error_callback: () => {
+      // z.B. Popup blockiert/geschlossen -> wartende Erneuerung beenden
+      const warter = _tokenErneuerungWarter;
+      _tokenErneuerungWarter = null;
+      if (warter) warter(false);
+    },
   });
+}
+
+// Google-Anmeldungen gelten nur ~1 Stunde. Vor jedem Schreiben ins Sheet
+// wird geprüft und bei Bedarf still erneuert (ohne erneute Zustimmung).
+// Gibt true zurück, wenn ein gültiges Token vorliegt.
+let _tokenErneuerungWarter = null;
+let _tokenErneuerungLaeuft = null;
+function stelleGoogleTokenSicher() {
+  if (isGoogleConnected()) return Promise.resolve(true);
+  if (!googleTokenClient || !LS.get('ff_google_token', null)) return Promise.resolve(false); // nie verbunden
+  if (_tokenErneuerungLaeuft) return _tokenErneuerungLaeuft; // nur eine Erneuerung gleichzeitig
+
+  _tokenErneuerungLaeuft = new Promise(resolve => {
+    const fertig = ok => { _tokenErneuerungLaeuft = null; resolve(ok); };
+    _tokenErneuerungWarter = fertig;
+    try {
+      googleTokenClient.requestAccessToken({ prompt: '' });
+    } catch (e) {
+      _tokenErneuerungWarter = null; fertig(false); return;
+    }
+    // Sicherheitsnetz, falls Google gar nicht antwortet
+    setTimeout(() => {
+      if (_tokenErneuerungWarter === fertig) { _tokenErneuerungWarter = null; fertig(false); }
+    }, 20000);
+  });
+  return _tokenErneuerungLaeuft;
+}
+
+function renderConnectionsSicher() {
+  if (document.getElementById('sheetsStatus')) renderConnections();
 }
 
 function connectGoogle() {
@@ -5059,13 +5135,46 @@ function datumVonSheet(sheetDatum) {
 // gewünschten Namen ("Vorrat"/"Wartung"); existiert der im Spreadsheet
 // nicht (z.B. heißt er noch "Tabellenblatt1"), wird der ERSTE Tab genommen.
 const _tabNameCache = {};
+// Übersetzt Fehlerantworten der Sheets-API in verständliche Hinweise mit Lösung.
+async function pruefeSheetsAntwort(res) {
+  if (res.ok) return;
+  let detail = '';
+  try { detail = (await res.json())?.error?.message || ''; } catch (e) {}
+  const s = res.status;
+  let text;
+  if (s === 401) {
+    text = 'Google-Anmeldung abgelaufen – bitte ↻ tippen oder Google neu verbinden.';
+  } else if (s === 403 && /has not been used|is disabled|SERVICE_DISABLED|not been enabled/i.test(detail)) {
+    text = 'Die Google Sheets API ist im Google-Cloud-Projekt nicht aktiviert – Cloud Console → APIs & Dienste → Bibliothek → "Google Sheets API" → Aktivieren.';
+  } else if (s === 403 && /scope|insufficient/i.test(detail)) {
+    text = 'Fehlende Berechtigung für Google Sheets – bitte bei Google "Trennen" und neu "Verbinden".';
+  } else if (s === 403) {
+    text = 'Kein Zugriff auf dieses Sheet – gehört es zu einem anderen Google-Konto? Freigeben oder Link prüfen.';
+  } else if (s === 404) {
+    text = 'Sheet nicht gefunden – bitte den Link unter Familie → Google Sheets prüfen.';
+  } else if (s === 400 && /not supported/i.test(detail)) {
+    text = 'Die Datei ist eine Excel-Datei (.xlsx). In Google Sheets "Datei → Als Google Tabellen speichern" wählen und den NEUEN Link eintragen.';
+  } else {
+    text = `Fehler ${s}${detail ? ': ' + detail : ''}`;
+  }
+  throw new Error(text);
+}
+
+// Letzten Fehler je Bereich merken -> bleibt unter Familie sichtbar
+function merkeSheetsFehler(bereich, text) {
+  const f = LS.get('ff_sheets_fehler', {});
+  if (text) f[bereich] = text; else delete f[bereich];
+  LS.set('ff_sheets_fehler', f);
+  renderConnectionsSicher();
+}
+
 async function ermittleTabName(spreadsheetId, bevorzugt) {
   const cacheKey = spreadsheetId + '|' + bevorzugt;
   if (_tabNameCache[cacheKey]) return _tabNameCache[cacheKey];
 
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${googleAccessToken.token}` } });
-  if (!res.ok) throw new Error(`Sheets API Metadaten: ${res.status}`);
+  await pruefeSheetsAntwort(res);
   const data = await res.json();
   const titel = (data.sheets || []).map(s => s.properties.title);
   if (!titel.length) throw new Error('Spreadsheet hat keine Tabs.');
@@ -5097,7 +5206,7 @@ async function legeSheetTabAn(spreadsheetId, titel) {
     headers: { Authorization: `Bearer ${googleAccessToken.token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ requests: [{ addSheet: { properties: { title: titel } } }] }),
   });
-  if (!res.ok) throw new Error(`Tab "${titel}" konnte nicht angelegt werden: ${res.status}`);
+  await pruefeSheetsAntwort(res);
 }
 
 // Tab-Namen mit Leerzeichen/Sonderzeichen müssen in A1-Notation in
@@ -5117,7 +5226,7 @@ async function ladeSheetTab(bereich, bevorzugterTab) {
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${googleAccessToken.token}` },
   });
-  if (!res.ok) throw new Error(`Sheets API (${tab}): ${res.status}`);
+  await pruefeSheetsAntwort(res);
   const data = await res.json();
   return data.values || [];
 }
@@ -5128,7 +5237,8 @@ async function ladeSheetTab(bereich, bevorzugterTab) {
 // (Dutzende, nicht Tausende Zeilen) performant genug.
 async function schreibeSheetTab(bereich, bevorzugterTab, kopfzeile, datenZeilen) {
   const id = getSheetId(bereich);
-  if (!id || !isGoogleConnected()) return;
+  if (!id) return;
+  if (!isGoogleConnected()) throw new Error('Google-Sitzung abgelaufen');
 
   const tab = await ermittleTabName(id, bevorzugterTab);
   const alleZeilen = [kopfzeile, ...datenZeilen];
@@ -5141,7 +5251,7 @@ async function schreibeSheetTab(bereich, bevorzugterTab, kopfzeile, datenZeilen)
     },
     body: JSON.stringify({ values: alleZeilen }),
   });
-  if (!res.ok) throw new Error(`Sheets API Write (${tab}): ${res.status}`);
+  await pruefeSheetsAntwort(res);
 
   // Alte, jetzt überzählige Zeilen (falls die Liste kürzer geworden ist)
   // explizit leeren, damit keine "Geister-Artikel" unten stehen bleiben.
@@ -5219,13 +5329,85 @@ function setzeBrotvorrat(neu, { schreiben = true } = {}) {
   if (schreiben) schreibeVorratZuSheets();
 }
 
+// ── SYNC-SCHUTZ ───────────────────────────────────────────────
+// Jede lokale Änderung wird als "noch nicht übertragen" markiert (mit
+// Zeitstempel), bis das Sheet sie bestätigt hat. Beim Laden gewinnen
+// nicht übertragene lokale Änderungen -> sie werden ins Sheet geschrieben
+// statt vom (älteren) Sheet-Stand überschrieben zu werden.
+const SYNC_LABEL = { vorrat: 'Vorrat', wartung: 'Wartung', regeln: 'Regeln' };
+function getSyncOffen() { return LS.get('ff_sync_offen', {}); }
+function markiereSyncOffen(bereich) {
+  const o = getSyncOffen();
+  const stempel = Date.now() + Math.random(); // eindeutig je Änderung
+  o[bereich] = stempel;
+  LS.set('ff_sync_offen', o);
+  return stempel;
+}
+function markiereSyncErledigt(bereich, stempel) {
+  const o = getSyncOffen();
+  // Nur löschen, wenn seitdem keine neuere Änderung dazugekommen ist
+  if (o[bereich] === stempel) { delete o[bereich]; LS.set('ff_sync_offen', o); }
+}
+
+// Schreibvorgänge je Bereich nacheinander ausführen, damit sich zwei schnelle
+// Änderungen nicht überholen (sonst könnte ein älterer Stand zuletzt landen).
+const _schreibWarteschlange = {};
+function schreibeBereich(bereich, sheetBereich, tab, spalten, zeilenFn) {
+  if (!getSheetId(sheetBereich)) return Promise.resolve(false); // kein Sheet -> rein lokal
+  const stempel = markiereSyncOffen(bereich);
+  renderConnectionsSicher();
+
+  const job = async () => {
+    const ok = await stelleGoogleTokenSicher();
+    if (!ok) {
+      showToast(`${SYNC_LABEL[bereich]}: lokal gespeichert – wird beim nächsten Verbinden übertragen.`);
+      renderConnectionsSicher();
+      return false;
+    }
+    try {
+      // Zeilen ERST JETZT erzeugen -> immer der aktuellste lokale Stand
+      await schreibeSheetTab(sheetBereich, tab, spalten, zeilenFn());
+      markiereSyncErledigt(bereich, stempel);
+      merkeSheetsFehler(bereich, null);
+      return true;
+    } catch (err) {
+      console.error(`${SYNC_LABEL[bereich]} zu Sheets schreiben fehlgeschlagen:`, err);
+      showToast(`${SYNC_LABEL[bereich]}: ${err.message} (lokal gesichert)`, 8000);
+      merkeSheetsFehler(bereich, err.message);
+      return false;
+    }
+  };
+  const vorher = _schreibWarteschlange[bereich] || Promise.resolve();
+  const lauf = vorher.then(job, job);
+  _schreibWarteschlange[bereich] = lauf;
+  return lauf;
+}
+
+// Laden mit Schutz: offene lokale Änderungen oder ein leeres Sheet bei
+// vorhandenen lokalen Daten -> lokal hochladen statt überschreiben.
+// Gibt true zurück, wenn der Sheet-Stand übernommen werden darf.
+async function darfSheetStandUebernehmen(bereich, zeilenAnzahl, lokaleAnzahl, hochladen) {
+  if (getSyncOffen()[bereich]) {
+    await hochladen();
+    return false;
+  }
+  if (zeilenAnzahl === 0 && lokaleAnzahl > 0) {
+    await hochladen();
+    return false;
+  }
+  return true;
+}
+
 async function ladeVorratVonSheets() {
   try {
     const rows = await ladeSheetTab('vorrat', 'Vorrat');
     if (rows === null) return;
     const datenZeilen = rows.slice(1); // erste Zeile ist die Kopfzeile
     const vorrat = datenZeilen.map(zeileZuVorratItem).filter(Boolean);
+    const lokal = LS.get('ff_vorrat', []);
+    if (!(await darfSheetStandUebernehmen('vorrat', vorrat.length, lokal.length, schreibeVorratZuSheets))) return;
     LS.set('ff_vorrat', vorrat);
+    merkeSheetsFehler('vorrat', null);
     vorrat.forEach(merkeVorratImKatalog);
 
     const brot = vorrat.find(istBrotEintrag);
@@ -5239,18 +5421,14 @@ async function ladeVorratVonSheets() {
     }
   } catch (err) {
     console.error('Vorrat von Sheets laden fehlgeschlagen:', err);
-    showToast('Vorrat konnte nicht von Sheets geladen werden.');
+    showToast(`Vorrat: ${err.message}`, 8000);
+    merkeSheetsFehler('vorrat', err.message);
   }
 }
 
 async function schreibeVorratZuSheets() {
-  try {
-    const vorrat = LS.get('ff_vorrat', []);
-    await schreibeSheetTab('vorrat', 'Vorrat', VORRAT_SHEET_SPALTEN, vorrat.map(vorratItemZuZeile));
-  } catch (err) {
-    console.error('Vorrat zu Sheets schreiben fehlgeschlagen:', err);
-    showToast('Vorrat konnte nicht in Sheets gespeichert werden.');
-  }
+  return schreibeBereich('vorrat', 'vorrat', 'Vorrat', VORRAT_SHEET_SPALTEN,
+    () => LS.get('ff_vorrat', []).map(vorratItemZuZeile));
 }
 
 // ── WARTUNG ↔ SHEETS ───────────────────────────────────────────
@@ -5293,22 +5471,21 @@ async function ladeWartungVonSheets() {
     if (rows === null) return;
     const datenZeilen = rows.slice(1);
     const wartung = datenZeilen.map(zeileZuWartungItem).filter(Boolean);
+    const lokal = LS.get('ff_wartung', []);
+    if (!(await darfSheetStandUebernehmen('wartung', wartung.length, lokal.length, schreibeWartungZuSheets))) return;
     LS.set('ff_wartung', wartung);
+    merkeSheetsFehler('wartung', null);
     wartung.forEach(merkeWartungImKatalog);
   } catch (err) {
     console.error('Wartung von Sheets laden fehlgeschlagen:', err);
-    showToast('Wartung konnte nicht von Sheets geladen werden.');
+    showToast(`Wartung: ${err.message}`, 8000);
+    merkeSheetsFehler('wartung', err.message);
   }
 }
 
 async function schreibeWartungZuSheets() {
-  try {
-    const wartung = LS.get('ff_wartung', []);
-    await schreibeSheetTab('wartung', 'Wartung', WARTUNG_SHEET_SPALTEN, wartung.map(wartungItemZuZeile));
-  } catch (err) {
-    console.error('Wartung zu Sheets schreiben fehlgeschlagen:', err);
-    showToast('Wartung konnte nicht in Sheets gespeichert werden.');
-  }
+  return schreibeBereich('wartung', 'wartung', 'Wartung', WARTUNG_SHEET_SPALTEN,
+    () => LS.get('ff_wartung', []).map(wartungItemZuZeile));
 }
 
 // ── REGELN ↔ SHEETS (Tab "Regeln" im Wartung-Sheet) ───────────
@@ -5338,27 +5515,21 @@ async function ladeRegelnVonSheets() {
     const rows = await ladeSheetTab('wartung', 'Regeln');
     if (rows === null) return;
     const regeln = rows.slice(1).map(zeileZuRegel).filter(Boolean);
-    if (!regeln.length) {
-      // Tab neu/leer: bisherige Regeln (lokal oder Standard) einmalig übernehmen
-      LS.set('ff_regeln', getRegeln());
-      await schreibeRegelnZuSheets();
-      return;
-    }
+    // Tab neu/leer: bisherige Regeln (lokal oder Standard) übernehmen
+    if (!regeln.length && !LS.get('ff_regeln', null)) LS.set('ff_regeln', getRegeln());
+    if (!(await darfSheetStandUebernehmen('regeln', regeln.length, getRegeln().length, schreibeRegelnZuSheets))) return;
     LS.set('ff_regeln', regeln);
+    merkeSheetsFehler('regeln', null);
   } catch (err) {
     console.error('Regeln von Sheets laden fehlgeschlagen:', err);
-    showToast('Regeln konnten nicht von Sheets geladen werden.');
+    showToast(`Regeln: ${err.message}`, 8000);
+    merkeSheetsFehler('regeln', err.message);
   }
 }
 
 async function schreibeRegelnZuSheets() {
-  if (!isSheetsConnected('wartung')) return;
-  try {
-    await schreibeSheetTab('wartung', 'Regeln', REGELN_SHEET_SPALTEN, getRegeln().map(regelZuZeile));
-  } catch (err) {
-    console.error('Regeln zu Sheets schreiben fehlgeschlagen:', err);
-    showToast('Regeln konnten nicht in Sheets gespeichert werden.');
-  }
+  return schreibeBereich('regeln', 'wartung', 'Regeln', REGELN_SHEET_SPALTEN,
+    () => getRegeln().map(regelZuZeile));
 }
 
 // Lädt beim Verbinden/App-Start BEIDE Tabs einmalig.
@@ -6054,7 +6225,7 @@ function dedupeEinkauf(items) {
 }
 
 // ── TOAST (kleines Feedback-UI) ───────────────────────────────
-function showToast(msg) {
+function showToast(msg, dauer = 2800) {
   let el = document.getElementById('ffToast');
   if (!el) {
     el = document.createElement('div');
@@ -6065,7 +6236,7 @@ function showToast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(el._timer);
-  el._timer = setTimeout(() => el.classList.remove('show'), 2800);
+  el._timer = setTimeout(() => el.classList.remove('show'), dauer);
 }
 
   </script>
