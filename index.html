@@ -981,6 +981,16 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   margin-top: 2px;
 }
 .connect-status.connected { color: var(--status-ok); }
+.kalender-auswahl-zeile { display: flex; align-items: center; gap: 8px; }
+.kalender-auswahl-zeile .kalender-auswahl-item { flex: 1; min-width: 0; }
+.arbeit-toggle {
+  flex-shrink: 0;
+  font-size: 0.7rem; font-weight: 700;
+  padding: 5px 9px; border-radius: 99px;
+  background: transparent; color: var(--muted);
+  border: 1.5px solid var(--cream-dim);
+}
+.arbeit-toggle.aktiv { background: var(--forest); border-color: var(--forest); color: var(--cream); }
 .connect-status.sync-warnung { color: var(--status-mid); font-weight: 700; }
 .sheets-fehler {
   margin-top: 6px;
@@ -1061,35 +1071,6 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
 }
 .brot-historie-item:last-child { border-bottom: none; }
 
-.orte-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
-.ort-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.ort-name { flex: 1; font-size: 0.95rem; font-weight: 600; color: var(--ink); }
-.ort-fahrzeit {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--green);
-  font-variant-numeric: tabular-nums;
-}
-.ort-del {
-  width: 26px; height: 26px;
-  border-radius: 50%;
-  background: var(--cream);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.8rem;
-  color: var(--muted);
-  transition: background 0.15s;
-}
-.ort-del:active { background: #f0c0c0; color: #b84040; }
-.ort-add-btn {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--green);
-  padding: 6px 0;
-}
 
 .reset-hint {
   font-size: 0.82rem;
@@ -1343,6 +1324,67 @@ select.modal-input { background: #fff; }
   text-align: center;
 }
 
+/* Puffer: Hinweis, Morgen-Kachel, Vorschläge */
+.puffer-hinweis { font-size: 0.75rem; color: var(--muted); margin-top: 8px; }
+.puffer-hinweis:empty { display: none; }
+.card-puffer-morgen { border-left: 4px solid var(--status-ok); }
+.card-puffer-morgen.puffer-voll { border-left-color: var(--status-mid); }
+.card-puffer-morgen.puffer-krit { border-left-color: var(--status-red); }
+.morgen-kopf { display: flex; justify-content: space-between; align-items: center; }
+.morgen-status { font-size: 0.78rem; font-weight: 700; color: var(--ink); }
+.morgen-zeile { display: flex; align-items: baseline; gap: 6px; margin: 6px 0 8px; }
+.morgen-hours { font-size: 1.6rem; font-weight: 800; color: var(--forest); }
+.morgen-frei { font-size: 0.85rem; color: var(--muted); }
+.morgen-details { font-size: 0.78rem; color: var(--muted); margin-top: 8px; }
+.puffer-vorschlaege:empty { display: none; }
+.puffer-vorschlaege { margin-top: 12px; }
+.puffer-vorschlag-titel { font-size: 0.78rem; font-weight: 800; color: var(--forest); margin-bottom: 6px; }
+.puffer-vorschlag {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--cream); border-radius: var(--radius-sm);
+  padding: 8px 10px; margin-bottom: 6px;
+}
+.puffer-vorschlag-text { flex: 1; font-size: 0.82rem; color: var(--ink); min-width: 0; }
+.puffer-gewinn { font-size: 0.72rem; font-weight: 800; color: var(--green); white-space: nowrap; }
+.puffer-gewinn.leise { font-weight: 600; color: var(--muted); }
+.puffer-uebernehmen {
+  flex-shrink: 0; font-size: 0.75rem; font-weight: 700;
+  padding: 6px 10px; border-radius: 99px;
+  background: var(--forest); color: var(--cream);
+}
+.puffer-uebernehmen:disabled { opacity: 0.5; }
+.puffer-aktiv { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.puffer-aktiv-chip {
+  font-size: 0.75rem; font-weight: 700; padding: 5px 10px; border-radius: 99px;
+  background: rgba(46,125,50,0.12); color: var(--forest);
+}
+.puffer-aktiv-chip span { margin-left: 4px; }
+
+/* Vorrat-Suche */
+.suche-wrap { position: relative; margin: 4px 0 10px; }
+.suche-input {
+  width: 100%;
+  border: 2px solid var(--cream-dim);
+  border-radius: 99px;
+  padding: 11px 42px 11px 16px;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--ink);
+  background: #fff;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.15s;
+}
+.suche-input:focus { border-color: var(--green); }
+.suche-input::-webkit-search-cancel-button { display: none; }
+.suche-leeren {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--cream); color: var(--muted); font-size: 0.8rem;
+}
+.suche-info { font-size: 0.75rem; color: var(--muted); margin: -4px 0 10px 6px; }
+
 /* Vorschlags-Chips in Masken */
 .vorschlag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px; }
 .vorschlag-chips:empty { display: none; }
@@ -1434,7 +1476,7 @@ select.modal-input { background: #fff; }
 
       <!-- Kachel 1: Freier Puffer -->
       <div class="card card-puffer" id="pufferCard">
-        <div class="card-label">Freier Puffer</div>
+        <div class="card-label" id="pufferLabel">Freier Puffer · Heute</div>
         <div class="puffer-main">
           <span class="puffer-hours" id="pufferHours">5,8 h</span>
         </div>
@@ -1453,11 +1495,6 @@ select.modal-input { background: #fff; }
         </div>
         <div class="puffer-breakdown">
           <div class="breakdown-item">
-            <span class="breakdown-icon">🚗</span>
-            <span class="breakdown-label">Fahrzeit</span>
-            <span class="breakdown-val" id="bdFahrzeit">1,2 h</span>
-          </div>
-          <div class="breakdown-item">
             <span class="breakdown-icon">🏠</span>
             <span class="breakdown-label">Haushalt</span>
             <span class="breakdown-val" id="bdHaushalt">0,8 h</span>
@@ -1467,7 +1504,29 @@ select.modal-input { background: #fff; }
             <span class="breakdown-label">Training</span>
             <span class="breakdown-val" id="bdTraining">1,0 h</span>
           </div>
+          <div class="breakdown-item">
+            <span class="breakdown-icon">📅</span>
+            <span class="breakdown-label">Termine</span>
+            <span class="breakdown-val" id="bdTermine">0 h</span>
+          </div>
         </div>
+        <div class="puffer-hinweis" id="pufferHinweis"></div>
+        <div class="puffer-vorschlaege" id="pufferVorschlaege"></div>
+      </div>
+
+      <!-- Kachel: Puffer morgen -->
+      <div class="card card-puffer-morgen" id="pufferMorgenCard">
+        <div class="morgen-kopf">
+          <div class="card-label" id="morgenLabel" style="margin-bottom:0;">Morgen</div>
+          <span class="morgen-status" id="morgenStatus"></span>
+        </div>
+        <div class="morgen-zeile">
+          <span class="morgen-hours" id="morgenHours">– h</span>
+          <span class="morgen-frei">frei</span>
+        </div>
+        <div class="puffer-bar-track"><div class="puffer-bar-fill" id="morgenBarFill"></div></div>
+        <div class="morgen-details" id="morgenDetails"></div>
+        <div class="puffer-vorschlaege" id="morgenVorschlaege"></div>
       </div>
 
       <!-- Kachel 2: Heute -->
@@ -1476,13 +1535,6 @@ select.modal-input { background: #fff; }
         <ul class="termin-list" id="terminList">
           <!-- dynamisch befüllt -->
         </ul>
-        <div class="naechste-fahrt" id="naechsteFahrt">
-          <span class="fahrt-icon">🚗</span>
-          <div>
-            <div class="fahrt-label">Nächste Abfahrt</div>
-            <div class="fahrt-time" id="fahrtTime">14:25 Uhr</div>
-          </div>
-        </div>
       </div>
 
       <!-- Kachel 3: Essen -->
@@ -1619,11 +1671,6 @@ select.modal-input { background: #fff; }
       </div>
 
       <div class="card">
-        <div class="card-label">Fahrzeiten</div>
-        <ul class="orte-list" id="orteListe"></ul>
-        <button class="ort-add-btn" id="ortAddBtn">+ Ort hinzufügen</button>
-      </div>
-      <div class="card">
         <div class="card-label">Kapazitätseinstellungen</div>
         <div class="kapazitaet-form" id="kapazitaetForm"></div>
       </div>
@@ -1677,6 +1724,11 @@ select.modal-input { background: #fff; }
         <div class="view-header">Vorrat</div>
         <button class="vorschlag-btn" id="vorratNeuBtn">+ Artikel</button>
       </div>
+      <div class="suche-wrap">
+        <input type="search" id="vorratSuche" class="suche-input" placeholder="🔍 Artikel, Lagerort oder Kategorie…" autocomplete="off" />
+        <button type="button" class="suche-leeren" id="vorratSucheLeeren" style="display:none;" aria-label="Suche leeren">✕</button>
+      </div>
+      <div id="vorratSucheInfo" class="suche-info" style="display:none;"></div>
       <div id="vorratListe"></div>
     </section>
 
@@ -1896,7 +1948,7 @@ const LS = {
 
 // ── DEFAULT DATA ─────────────────────────────────────────────
 const DEFAULTS = {
-  kapazitaet: { schlaf: 8, arbeit: 8, fahrzeit: 1.2, haushalt: 0.8, training: 1.0 },
+  kapazitaet: { schlaf: 8, arbeit: 8, haushalt: 0.8, training: 1.0 },
 
   termine: [],
 
@@ -1912,17 +1964,11 @@ const DEFAULTS = {
     Sonntag:    { Frühstück: [], Mittag: [], Abend: [], sonstige: [] },
   },
 
-  orte: [
-    { id: 'o1', name: 'Zuhause',              fahrzeit: 0  },
-    { id: 'o2', name: 'Rehbergheim Kulmbach', fahrzeit: 35 },
-    { id: 'o3', name: 'Kindergarten',         fahrzeit: 12 },
-  ],
 
   einkauf: [],
 
   hinweise: [],
 
-  naechsteFahrt: '14:25',
 };
 
 // ── STATE ─────────────────────────────────────────────────────
@@ -1931,12 +1977,10 @@ let state = {
   termine:      LS.get('ff_termine',      DEFAULTS.termine),
   aufgaben:     LS.get('ff_aufgaben',     DEFAULTS.aufgaben),
   essenWoche:   LS.get('ff_essenWoche',   DEFAULTS.essenWoche),
-  orte:         LS.get('ff_orte',         DEFAULTS.orte),
   einkauf:      LS.get('ff_einkauf',      DEFAULTS.einkauf),
   einkaufErledigt: LS.get('ff_einkaufErledigt', []),
   brotvorrat:   LS.get('ff_brotvorrat', { bestand: null, letztGebacken: null }),
   hinweise:     LS.get('ff_hinweise',     DEFAULTS.hinweise),
-  naechsteFahrt:LS.get('ff_fahrt',        DEFAULTS.naechsteFahrt),
   activeView:   'home',
 };
 
@@ -1945,6 +1989,13 @@ function save(key, val) { state[key] = val; LS.set('ff_' + key, val); }
 // Einmalige Bereinigung alter Testdaten aus der ersten Version (feste IDs):
 // "Badreiniger fehlt"-Hinweis, Beispiel-Einkäufe, -Termine und -Aufgaben.
 (function entferneAlteTestdaten() {
+  localStorage.removeItem('ff_fahrt'); // fester Testwert "Nächste Abfahrt 14:25"
+  localStorage.removeItem('ff_orte');  // Fahrzeiten-Liste entfällt (Fahrten stehen im Kalender)
+  if (state.kapazitaet && 'fahrzeit' in state.kapazitaet) {
+    const { fahrzeit, ...rest } = state.kapazitaet;
+    save('kapazitaet', rest);
+  }
+
   const SEED = {
     hinweise: ['h1', 'h2'],
     einkauf:  ['e1', 'e2', 'e3', 'e4', 'e5', 'e6'],
@@ -2023,25 +2074,98 @@ function formatDayShort(date) {
 }
 
 // ── KAPAZITÄT BERECHNUNG ──────────────────────────────────────
-function calcCapacity() {
-  const k = state.kapazitaet;
-  const todayStr = today();
-  const aufgabenMin = state.aufgaben
-    .filter(a => !a.done && a.date === todayStr)
-    .reduce((s, a) => s + (a.duration || 0), 0);
-  const aufgabenH = aufgabenMin / 60;
+// ── PUFFER-BERECHNUNG (pro Tag) ───────────────────────────────
+// 24 h minus Schlaf, Haushalt, Training (täglich) minus Arbeit (nur Mo–Fr,
+// nicht an Feiertagen) minus echte Termindauer (ohne ganztägige und ohne
+// Arbeitskalender) minus Aufgaben mit Dauer. Fahrzeiten werden nicht mehr
+// pauschal gerechnet -- sie stehen als Termine im Kalender.
+const PUFFER_KNAPP_H = 4;   // darunter: knapp -> Vorschläge
+const PUFFER_KRIT_H  = 2;   // darunter: kritisch
 
-  const planned = k.schlaf + k.arbeit + k.fahrzeit + k.haushalt + k.training + aufgabenH;
+function datumPlusTage(dateStr, n) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return toLocalDateStr(d);
+}
+
+function istFeiertag(dateStr) {
+  return state.termine.some(t => t.date === dateStr && t.allDay && /holiday/i.test(t.calendarId || ''));
+}
+
+function istArbeitstag(dateStr) {
+  const wd = new Date(dateStr + 'T12:00:00').getDay(); // 0 = So
+  return wd >= 1 && wd <= 5 && !istFeiertag(dateStr);
+}
+
+// Termine eines Tages, die zusätzlich zur Arbeitszeit Zeit kosten
+function puffertermine(dateStr) {
+  const arbeit = getArbeitskalender();
+  return state.termine.filter(t =>
+    t.date === dateStr && !t.allDay &&
+    t.startMin !== null && t.startMin !== undefined && t.endMin > t.startMin &&
+    !arbeit.includes(t.calendarId));
+}
+
+// Stunden aus Terminen; überlappende Termine werden nicht doppelt gezählt
+function terminStunden(dateStr) {
+  const iv = puffertermine(dateStr).map(t => [t.startMin, t.endMin]).sort((a, b) => a[0] - b[0]);
+  let summe = 0, aktS = null, aktE = null;
+  iv.forEach(([s, e]) => {
+    if (aktE === null || s > aktE) { if (aktE !== null) summe += aktE - aktS; aktS = s; aktE = e; }
+    else aktE = Math.max(aktE, e);
+  });
+  if (aktE !== null) summe += aktE - aktS;
+  return summe / 60;
+}
+
+// Tagesanpassungen aus den Vorschlägen (z.B. Training auslassen)
+function getTagAnpassung(dateStr) {
+  return LS.get('ff_tag_anpassungen', {})[dateStr] || {};
+}
+function setzeTagAnpassung(dateStr, schluessel, wert) {
+  const alle = LS.get('ff_tag_anpassungen', {});
+  // alte Tage aufräumen
+  const grenze = datumPlusTage(today(), -7);
+  Object.keys(alle).forEach(d => { if (d < grenze) delete alle[d]; });
+  alle[dateStr] = { ...(alle[dateStr] || {}), [schluessel]: wert };
+  if (!wert) delete alle[dateStr][schluessel];
+  LS.set('ff_tag_anpassungen', alle);
+}
+
+// Aufgaben, die an diesem Tag anstehen (heute inkl. überfälliger)
+function aufgabenFuerTag(dateStr) {
+  const istHeute = dateStr === today();
+  return state.aufgaben.filter(a => !a.done && a.date &&
+    (istHeute ? a.date <= dateStr : a.date === dateStr));
+}
+
+function calcCapacity(dateStr = today()) {
+  const k = state.kapazitaet;
+  const anp = getTagAnpassung(dateStr);
+  const arbeitstag = istArbeitstag(dateStr);
+
+  const teile = {
+    schlaf:   k.schlaf,
+    arbeit:   arbeitstag ? k.arbeit : 0,
+    haushalt: anp.haushaltHalb ? k.haushalt / 2 : k.haushalt,
+    training: anp.trainingAus ? 0 : k.training,
+    termine:  terminStunden(dateStr),
+    aufgaben: aufgabenFuerTag(dateStr).reduce((s, a) => s + (a.duration || 0), 0) / 60,
+  };
+
+  const planned = Object.values(teile).reduce((s, x) => s + x, 0);
   const clamped = Math.min(planned, 24);
   const free    = Math.max(0, 24 - clamped);
   const pct     = (clamped / 24) * 100;
 
   let status, statusLabel;
-  if (clamped < 16) { status = 'ok';   statusLabel = '🟢 Entspannt'; }
-  else if (clamped < 20) { status = 'voll'; statusLabel = '🟠 Voll'; }
-  else               { status = 'krit'; statusLabel = '🔴 Kritisch'; }
+  if (free >= PUFFER_KNAPP_H)      { status = 'ok';   statusLabel = '🟢 Entspannt'; }
+  else if (free >= PUFFER_KRIT_H)  { status = 'voll'; statusLabel = '🟠 Knapp'; }
+  else                             { status = 'krit'; statusLabel = '🔴 Kritisch'; }
 
-  return { planned: clamped, free, pct, status, statusLabel };
+  return { planned: clamped, free, pct, status, statusLabel, teile, arbeitstag, anp,
+           feiertag: istFeiertag(dateStr), termineAnzahl: puffertermine(dateStr).length,
+           aufgabenAnzahl: aufgabenFuerTag(dateStr).length };
 }
 
 // ── EINKAUF KATEGORIEN ────────────────────────────────────────
@@ -2278,23 +2402,214 @@ function renderHeader() {
   document.getElementById('headerDate').textContent = dateStr();
 }
 
-function renderPuffer() {
-  const { planned, free, pct, status, statusLabel } = calcCapacity();
-  const card   = document.getElementById('pufferCard');
-  const k      = state.kapazitaet;
+const fmtH = h => (Math.round(h * 10) / 10).toFixed(1).replace('.', ',') + ' h';
+const WOCHENTAGE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+const wochentagVon = dateStr => WOCHENTAGE[new Date(dateStr + 'T12:00:00').getDay()];
 
-  document.getElementById('pufferHours').textContent = free.toFixed(1).replace('.', ',') + ' h';
-  document.getElementById('pufferUsed').textContent  = planned.toFixed(1).replace('.', ',') + ' h belegt';
+function renderPuffer() {
+  const heute = today();
+  const cap = calcCapacity(heute);
+  const { planned, free, pct, status, statusLabel, teile } = cap;
+  const card = document.getElementById('pufferCard');
+
+  document.getElementById('pufferHours').textContent = fmtH(free);
+  document.getElementById('pufferUsed').textContent  = fmtH(planned) + ' belegt';
   document.getElementById('pufferBarFill').style.width = pct + '%';
   document.getElementById('statusLabel').textContent = statusLabel;
-  document.getElementById('bdFahrzeit').textContent  = k.fahrzeit.toFixed(1).replace('.', ',') + ' h';
-  document.getElementById('bdHaushalt').textContent  = k.haushalt.toFixed(1).replace('.', ',') + ' h';
-  document.getElementById('bdTraining').textContent  = k.training.toFixed(1).replace('.', ',') + ' h';
+  document.getElementById('bdHaushalt').textContent  = fmtH(teile.haushalt);
+  document.getElementById('bdTraining').textContent  = fmtH(teile.training);
+  const bdTermine = document.getElementById('bdTermine');
+  if (bdTermine) bdTermine.textContent = fmtH(teile.termine);
+
+  const hinweis = document.getElementById('pufferHinweis');
+  if (hinweis) hinweis.textContent = tagesartText(cap, true);
 
   card.classList.remove('puffer-ok', 'puffer-voll', 'puffer-krit');
   card.classList.add('puffer-' + status);
 
+  renderPufferVorschlaege('pufferVorschlaege', heute, cap);
+  renderPufferMorgen();
+
   writeWidgetSnapshot({ planned, free, pct, status, statusLabel });
+}
+
+function tagesartText(cap, nurBesonderes = false) {
+  if (cap.feiertag) return 'Feiertag – keine Arbeitszeit eingerechnet';
+  if (!cap.arbeitstag) return 'Wochenende – keine Arbeitszeit eingerechnet';
+  return nurBesonderes ? '' : 'Arbeitstag';
+}
+
+function renderPufferMorgen() {
+  const card = document.getElementById('pufferMorgenCard');
+  if (!card || isWidgetMode()) { if (card) card.style.display = 'none'; return; }
+  const morgen = datumPlusTage(today(), 1);
+  const cap = calcCapacity(morgen);
+
+  document.getElementById('morgenLabel').textContent = `Morgen · ${wochentagVon(morgen)}`;
+  document.getElementById('morgenStatus').textContent = cap.statusLabel;
+  document.getElementById('morgenHours').textContent = fmtH(cap.free);
+  document.getElementById('morgenBarFill').style.width = cap.pct + '%';
+
+  const teile = [tagesartText(cap)];
+  if (cap.termineAnzahl) teile.push(`${cap.termineAnzahl} Termin${cap.termineAnzahl === 1 ? '' : 'e'} (${fmtH(cap.teile.termine)})`);
+  if (cap.aufgabenAnzahl) teile.push(`${cap.aufgabenAnzahl} Aufgabe${cap.aufgabenAnzahl === 1 ? '' : 'n'}`);
+  document.getElementById('morgenDetails').textContent = teile.join(' · ');
+
+  card.classList.remove('puffer-ok', 'puffer-voll', 'puffer-krit');
+  card.classList.add('puffer-' + cap.status);
+
+  renderPufferVorschlaege('morgenVorschlaege', morgen, cap);
+}
+
+// ── VORSCHLÄGE BEI KNAPPEM PUFFER ─────────────────────────────
+function istSchnellesEssen(e) {
+  const t = (e.title || '').toLowerCase();
+  const tags = (e.tags || []).map(x => String(x).toLowerCase());
+  return !!e.kuehltrucheId || tags.includes('tiefgefroren') || tags.includes('reste')
+    || /reste|kalte küche|brotzeit|aufwärmen/.test(t);
+}
+
+// Schnelle Alternativen: zuerst Reste (ältestes zuerst), dann Gefriergut
+function schnelleEssenOptionen() {
+  const bereitsGeplant = new Set();
+  Object.values(state.essenWoche || {}).forEach(tag =>
+    ['Frühstück', 'Mittag', 'Abend', 'sonstige'].forEach(s =>
+      (Array.isArray(tag?.[s]) ? tag[s] : []).forEach(e => { if (e.kuehltrucheId) bereitsGeplant.add(e.kuehltrucheId); })));
+
+  const verfuegbar = v => (v.menge === null || v.menge === undefined || v.menge > 0) && !bereitsGeplant.has(v.id);
+  const alle = getVorratMitStatus();
+  const reste = alle.filter(v => v.istRest && verfuegbar(v))
+    .sort((a, b) => (b.tageAlt || 0) - (a.tageAlt || 0))
+    .map(v => ({ v, art: 'Reste' }));
+  const gefr = alle.filter(v => !v.istRest && istGefrierschrank(v.lagerort) && verfuegbar(v))
+    .sort((a, b) => (b.tageEingefroren || 0) - (a.tageEingefroren || 0))
+    .map(v => ({ v, art: 'Gefriergut' }));
+  return [...reste, ...gefr];
+}
+
+function erstellePufferVorschlaege(dateStr, cap) {
+  const k = state.kapazitaet;
+  const v = [];
+
+  // 1) Training auslassen / Haushalt aufs Nötigste
+  if (!cap.anp.trainingAus && k.training > 0) {
+    v.push({ text: '🏃 Training heute auslassen', gewinn: k.training,
+             aktion: () => setzeTagAnpassung(dateStr, 'trainingAus', true) });
+  }
+  if (!cap.anp.haushaltHalb && k.haushalt > 0) {
+    v.push({ text: '🏠 Haushalt aufs Nötigste', gewinn: k.haushalt / 2,
+             aktion: () => setzeTagAnpassung(dateStr, 'haushaltHalb', true) });
+  }
+
+  // 2) Schnelles Abendessen statt aufwändig kochen
+  const tagName = wochentagVon(dateStr);
+  const abend = (state.essenWoche?.[tagName]?.Abend || [])[0];
+  if (!abend || !istSchnellesEssen(abend)) {
+    schnelleEssenOptionen().slice(0, 2).forEach(({ v: item, art }) => {
+      const statt = abend ? `statt „${abend.title}" ` : '';
+      v.push({ text: `🍽️ ${statt}${art} „${item.title}"`, gewinn: null, hinweisGewinn: 'spart Kochzeit',
+               aktion: () => planeSchnellesEssen(tagName, item, art) });
+    });
+  }
+
+  // 3) Aufgaben auf den freiesten der nächsten Tage schieben
+  const kandidaten = [1, 2, 3, 4].map(n => datumPlusTage(dateStr, n))
+    .map(d => ({ d, free: calcCapacity(d).free }))
+    .sort((a, b) => b.free - a.free);
+  const ziel = kandidaten[0];
+  if (ziel && ziel.free > cap.free) {
+    aufgabenFuerTag(dateStr).filter(a => !a.virtuell).slice(0, 3).forEach(a => {
+      const tagKurz = wochentagVon(ziel.d).slice(0, 2);
+      v.push({ text: `📋 „${a.title}" auf ${tagKurz} schieben (dort ${fmtH(ziel.free)} frei)`,
+               gewinn: (a.duration || 0) / 60 || null,
+               aktion: () => verschiebeAufgabe(a, ziel.d) });
+    });
+  }
+  return v;
+}
+
+function renderPufferVorschlaege(containerId, dateStr, cap) {
+  const box = document.getElementById(containerId);
+  if (!box || isWidgetMode()) return;
+
+  // Bereits übernommene Anpassungen: sichtbar und rückgängig machbar
+  const aktiv = [];
+  if (cap.anp.trainingAus)  aktiv.push({ text: '🏃 Training ausgelassen', key: 'trainingAus' });
+  if (cap.anp.haushaltHalb) aktiv.push({ text: '🏠 Haushalt reduziert',  key: 'haushaltHalb' });
+  const aktivHtml = aktiv.length ? `<div class="puffer-aktiv">${aktiv.map(a =>
+    `<button type="button" class="puffer-aktiv-chip" data-key="${a.key}">${a.text} <span>↶</span></button>`).join('')}</div>` : '';
+
+  const vorschlaege = cap.status === 'ok' ? [] : erstellePufferVorschlaege(dateStr, cap);
+  const listeHtml = vorschlaege.length ? `
+    <div class="puffer-vorschlag-titel">💡 So schaffst du Luft</div>
+    ${vorschlaege.map((x, i) => `
+      <div class="puffer-vorschlag">
+        <span class="puffer-vorschlag-text">${escAttr(x.text)}</span>
+        ${x.gewinn ? `<span class="puffer-gewinn">+${fmtH(x.gewinn)}</span>`
+                   : (x.hinweisGewinn ? `<span class="puffer-gewinn leise">${x.hinweisGewinn}</span>` : '')}
+        <button type="button" class="puffer-uebernehmen" data-i="${i}">Übernehmen</button>
+      </div>`).join('')}` : '';
+
+  box.innerHTML = aktivHtml + listeHtml;
+
+  box.querySelectorAll('.puffer-aktiv-chip').forEach(b => b.addEventListener('click', () => {
+    setzeTagAnpassung(dateStr, b.dataset.key, false);
+    renderPuffer();
+  }));
+  box.querySelectorAll('.puffer-uebernehmen').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    await vorschlaege[+b.dataset.i].aktion();
+    refreshAllViews();
+    showToast('Übernommen ✓');
+  }));
+}
+
+// Schnelles Essen in den Essensplan setzen. Beim "Gegessen"-Abhaken wird
+// der Vorrat-Eintrag (Reste/Gefriergut) wie gewohnt entfernt.
+function planeSchnellesEssen(tagName, item, art) {
+  const essenWoche = { ...state.essenWoche };
+  const tag = essenWoche[tagName] || { Frühstück: [], Mittag: [], Abend: [], sonstige: [] };
+  tag.Abend = [{
+    id: 'wp_puffer_' + uid(),
+    title: item.title,
+    tags: [art],
+    kuehltrucheId: item.id,
+    zutaten: [],
+    source: 'puffer',
+  }];
+  essenWoche[tagName] = tag;
+  save('essenWoche', essenWoche);
+}
+
+// Aufgabe verschieben -- bei Google-Tasks auch das Fälligkeitsdatum in
+// Google ändern, sonst holt der nächste Sync das alte Datum zurück.
+async function verschiebeAufgabe(aufgabe, zielDatum) {
+  save('aufgaben', state.aufgaben.map(a => a.id === aufgabe.id ? { ...a, date: zielDatum } : a));
+  aktualisiereMaterialEinkauf();
+  if (aufgabe.source === 'google' && aufgabe.googleTaskId) {
+    await schreibeGoogleTaskFaelligkeit(aufgabe, zielDatum);
+  }
+}
+
+async function schreibeGoogleTaskFaelligkeit(aufgabe, datum) {
+  if (!(await stelleGoogleTokenSicher())) {
+    showToast('Nur lokal verschoben – Google-Anmeldung abgelaufen.', 5000);
+    return;
+  }
+  try {
+    const listId = aufgabe.googleListId || '@default';
+    const res = await fetch(
+      `https://tasks.googleapis.com/tasks/v1/lists/${encodeURIComponent(listId)}/tasks/${aufgabe.googleTaskId}`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${googleAccessToken.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ due: datum + 'T00:00:00.000Z' }),
+      });
+    if (!res.ok) throw new Error(res.status);
+  } catch (err) {
+    console.error('Fälligkeit nach Google schreiben fehlgeschlagen:', err);
+    showToast('Verschieben in Google fehlgeschlagen – nur lokal geändert.', 5000);
+  }
 }
 
 // ── WIDGET-VORBEREITUNG ───────────────────────────────────────
@@ -2353,8 +2668,6 @@ function renderTermine() {
           </div>
         </li>`).join('')
     : '<li class="empty-state">Keine Termine heute.</li>';
-
-  document.getElementById('fahrtTime').textContent = state.naechsteFahrt + ' Uhr';
 }
 
 function renderEssenHeute() {
@@ -3241,14 +3554,46 @@ function getVorratMitStatus() {
   });
 }
 
+// Suchbegriff (bleibt beim Wechsel der Ansicht erhalten, nicht dauerhaft gespeichert)
+let _vorratSuche = '';
+
+// Vergleichsschlüssel für die Suche: klein, Umlaute vereinfacht ("Käse" ~ "kase")
+function suchKey(s) {
+  return (s || '').toLowerCase()
+    .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss')
+    .trim();
+}
+
+// Treffer, wenn ALLE Suchwörter in Name, Lagerort oder Kategorie vorkommen
+// ("keller mehl" -> Mehl im Keller)
+function vorratPasstZurSuche(v, suche) {
+  const woerter = suchKey(suche).split(/\s+/).filter(Boolean);
+  if (!woerter.length) return true;
+  const heuhaufen = suchKey([v.title, v.lagerort, v.kategorie || guessKategorie(v.title)].join(' '));
+  return woerter.every(w => heuhaufen.includes(w));
+}
+
 function renderVorrat() {
   const wrap = document.getElementById('vorratListe');
-  const vorrat = getVorratMitStatus();
+  const alleVorraete = getVorratMitStatus();
+  const info = document.getElementById('vorratSucheInfo');
 
-  if (!vorrat.length) {
+  if (!alleVorraete.length) {
+    if (info) info.style.display = 'none';
     wrap.innerHTML = isSheetsConnected()
       ? '<div class="empty-state">Noch kein Vorrat hinterlegt. Über "+ Artikel" anlegen.</div>'
       : '<div class="empty-state">Google Sheets noch nicht verbunden (Familie → Verbindungen).</div>';
+    return;
+  }
+
+  const vorrat = _vorratSuche ? alleVorraete.filter(v => vorratPasstZurSuche(v, _vorratSuche)) : alleVorraete;
+
+  if (info) {
+    info.style.display = _vorratSuche ? '' : 'none';
+    info.textContent = `${vorrat.length} von ${alleVorraete.length} Artikeln`;
+  }
+  if (!vorrat.length) {
+    wrap.innerHTML = `<div class="empty-state">Keine Treffer für „${escAttr(_vorratSuche)}".</div>`;
     return;
   }
 
@@ -3682,6 +4027,22 @@ function setupVorratModal() {
   });
 
   document.getElementById('vorratNeuBtn').addEventListener('click', () => openVorratModal(null));
+
+  // Suche: filtert beim Tippen
+  const suche = document.getElementById('vorratSuche');
+  const leeren = document.getElementById('vorratSucheLeeren');
+  suche.addEventListener('input', () => {
+    _vorratSuche = suche.value;
+    leeren.style.display = _vorratSuche ? '' : 'none';
+    renderVorrat();
+  });
+  leeren.addEventListener('click', () => {
+    suche.value = '';
+    _vorratSuche = '';
+    leeren.style.display = 'none';
+    renderVorrat();
+    suche.focus();
+  });
 }
 
 // ── WARTUNG ───────────────────────────────────────────────────
@@ -4124,29 +4485,6 @@ function setupRegelModal() {
 function renderFamilie() {
   renderConnections();
 
-  const list = document.getElementById('orteListe');
-  list.innerHTML = state.orte.map(o => `
-    <li class="ort-item">
-      <span class="ort-name">${o.name}</span>
-      <span class="ort-fahrzeit">${o.fahrzeit === 0 ? '–' : o.fahrzeit + ' min'}</span>
-      ${o.id !== 'o1' ? `<button class="ort-del" data-oid="${o.id}">✕</button>` : ''}
-    </li>`).join('');
-
-  list.querySelectorAll('.ort-del').forEach(btn => {
-    btn.addEventListener('click', () => {
-      save('orte', state.orte.filter(o => o.id !== btn.dataset.oid));
-      renderFamilie();
-    });
-  });
-
-  document.getElementById('ortAddBtn').onclick = () => {
-    const name = prompt('Ortsname:');
-    if (!name) return;
-    const ft = parseInt(prompt('Fahrzeit in Minuten:'), 10) || 0;
-    save('orte', [...state.orte, { id: uid(), name, fahrzeit: ft }]);
-    renderFamilie();
-  };
-
   renderKapazitaet();
 
   document.getElementById('resetTestdataBtn').onclick = resetTestdata;
@@ -4585,6 +4923,20 @@ function setupSheetsModal() {
 // Zeigt Checkboxen für alle verfügbaren Google-Kalender (außer dem
 // primären, der immer automatisch dabei ist). Lädt beim ersten Öffnen
 // die Liste vom Server, danach aus dem Cache für schnelles Rendern.
+// Kalender, deren Termine als Arbeitszeit gelten (stecken in den pauschalen
+// Arbeitsstunden und zählen NICHT zusätzlich im Puffer). Beim ersten Mal
+// automatisch vorbelegt: Kalender mit Firmen-Mailadresse (nicht gmail/google).
+function getArbeitskalender(calList) {
+  const gespeichert = LS.get('ff_arbeitskalender', null);
+  if (gespeichert) return gespeichert;
+  const liste = calList || LS.get('ff_calendarListCache', []) || [];
+  const vermutet = liste
+    .filter(c => !c.primary && /@/.test(c.id) && !/@(gmail|googlemail)\.com$|google\.com$/i.test(c.id))
+    .map(c => c.id);
+  if (liste.length) LS.set('ff_arbeitskalender', vermutet);
+  return vermutet;
+}
+
 async function renderKalenderAuswahl() {
   const wrap = document.getElementById('kalenderAuswahlListe');
   let calList = LS.get('ff_calendarListCache', null);
@@ -4603,13 +4955,26 @@ async function renderKalenderAuswahl() {
     return;
   }
 
+  const arbeit = getArbeitskalender(calList);
   wrap.innerHTML = zusatzKalender.map(c => `
-    <label class="kalender-auswahl-item">
-      <input type="checkbox" data-calid="${c.id}" ${selected.includes(c.id) ? 'checked' : ''} />
-      <span class="kalender-farbpunkt" style="background:${c.color};"></span>
-      <span class="kalender-auswahl-name">${c.name}</span>
-    </label>
+    <div class="kalender-auswahl-zeile">
+      <label class="kalender-auswahl-item">
+        <input type="checkbox" data-calid="${c.id}" ${selected.includes(c.id) ? 'checked' : ''} />
+        <span class="kalender-farbpunkt" style="background:${c.color};"></span>
+        <span class="kalender-auswahl-name">${c.name}</span>
+      </label>
+      <button type="button" class="arbeit-toggle${arbeit.includes(c.id) ? ' aktiv' : ''}" data-arbeit="${escAttr(c.id)}"
+        title="Termine dieses Kalenders zählen als Arbeitszeit (nicht zusätzlich im Puffer)">💼 Arbeit</button>
+    </div>
   `).join('');
+
+  wrap.querySelectorAll('.arbeit-toggle').forEach(b => b.addEventListener('click', () => {
+    const ids = new Set(getArbeitskalender(calList));
+    if (ids.has(b.dataset.arbeit)) ids.delete(b.dataset.arbeit); else ids.add(b.dataset.arbeit);
+    LS.set('ff_arbeitskalender', [...ids]);
+    b.classList.toggle('aktiv');
+    renderPuffer();
+  }));
 
   wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('change', async () => {
@@ -4749,7 +5114,6 @@ function renderKapazitaet() {
   const rows = [
     { key: 'schlaf',   label: '😴 Schlaf'  },
     { key: 'arbeit',   label: '💼 Arbeit'  },
-    { key: 'fahrzeit', label: '🚗 Fahrzeit' },
     { key: 'haushalt', label: '🏠 Haushalt' },
     { key: 'training', label: '🏃 Training' },
   ];
@@ -5044,8 +5408,22 @@ async function syncGoogleCalendar() {
 
       (data.items || []).forEach(ev => {
         const startRaw = ev.start?.dateTime || ev.start?.date;
-        const dt = new Date(startRaw);
         const isAllDay = !ev.start?.dateTime;
+        // Ganztägige Termine kommen als reines Datum -> mittags parsen, damit
+        // keine Zeitzone den Tag verschiebt
+        const dt = isAllDay ? new Date(startRaw + 'T12:00:00') : new Date(startRaw);
+
+        // Start/Ende in Minuten ab Mitternacht (für die Puffer-Berechnung).
+        // Endet ein Termin erst am Folgetag, zählt er bis Mitternacht.
+        let startMin = null, endMin = null;
+        if (!isAllDay && ev.end?.dateTime) {
+          const ende = new Date(ev.end.dateTime);
+          startMin = dt.getHours() * 60 + dt.getMinutes();
+          endMin = toLocalDateStr(ende) === toLocalDateStr(dt)
+            ? ende.getHours() * 60 + ende.getMinutes()
+            : 24 * 60;
+        }
+
         allEvents.push({
           id:       'g_' + cal.id + '_' + ev.id,
           time:     isAllDay ? 'Ganztägig' : dt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
@@ -5053,6 +5431,9 @@ async function syncGoogleCalendar() {
           subtitle: ev.location || '',
           source:   'google',
           date:     toLocalDateStr(dt),
+          allDay:   isAllDay,
+          startMin, endMin,
+          calendarId:    cal.id,
           calendarName:  cal.name,
           calendarColor: cal.color,
         });
