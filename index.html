@@ -990,6 +990,50 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   background: transparent; color: var(--muted);
   border: 1.5px solid var(--cream-dim);
 }
+.zusatzkonto {
+  background: var(--cream);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.zusatzkonto-kopf { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.zusatzkonto-name { flex: 1; min-width: 0; font-size: 0.82rem; font-weight: 700; color: var(--forest);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zusatzkonto-status { font-size: 0.68rem; color: var(--status-ok); font-weight: 700; white-space: nowrap; }
+.zusatzkonto-status.abgelaufen { color: var(--status-mid); }
+.zusatzkonto-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #fff; color: var(--forest); font-size: 0.85rem; flex-shrink: 0;
+}
+.konto-add-btn {
+  width: 100%; margin-top: 4px; padding: 10px;
+  border: 1.5px dashed var(--cream-dim); border-radius: var(--radius-sm);
+  background: transparent; color: var(--green); font-size: 0.85rem; font-weight: 700;
+}
+.puffer-kopf { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.hauptnutzer-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.78rem; font-weight: 700; color: var(--forest);
+  background: var(--cream); padding: 6px 11px; border-radius: 99px; flex-shrink: 0;
+}
+.hauptnutzer-punkt { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.person-badge {
+  display: inline-block; font-size: 0.64rem; font-weight: 700; color: #fff;
+  padding: 1px 7px; border-radius: 99px; margin-right: 6px; vertical-align: middle; white-space: nowrap;
+}
+.person-select {
+  flex-shrink: 0; max-width: 96px;
+  font: inherit; font-size: 0.72rem; font-weight: 700; color: var(--forest);
+  background: #fff; border: 1.5px solid var(--cream-dim); border-radius: 99px; padding: 4px 6px;
+}
+.personen-liste { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.person-chip {
+  font-size: 0.78rem; font-weight: 700; padding: 6px 11px; border-radius: 99px;
+  background: #fff; border: 1.5px solid var(--cream-dim);
+}
+.person-chip { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.person-chip.fest { cursor: default; }
+.person-chip.neu { color: var(--muted); border-style: dashed; }
 .arbeit-toggle.aktiv { background: var(--forest); border-color: var(--forest); color: var(--cream); }
 .connect-status.sync-warnung { color: var(--status-mid); font-weight: 700; }
 .sheets-fehler {
@@ -1283,6 +1327,13 @@ select.modal-input { background: #fff; }
 .view-header-row {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
+.vorrat-notiz {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 2px;
+}
 .vorrat-kopf-rechts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .vorrat-edit-btn {
   width: 28px; height: 28px; border-radius: 50%;
@@ -1476,7 +1527,10 @@ select.modal-input { background: #fff; }
 
       <!-- Kachel 1: Freier Puffer -->
       <div class="card card-puffer" id="pufferCard">
-        <div class="card-label" id="pufferLabel">Freier Puffer · Heute</div>
+        <div class="puffer-kopf">
+          <div class="card-label" id="pufferLabel" style="margin-bottom:0;">Freier Puffer · Heute</div>
+          <button type="button" class="hauptnutzer-btn" id="hauptnutzerBtn" title="Person wechseln"></button>
+        </div>
         <div class="puffer-main">
           <span class="puffer-hours" id="pufferHours">5,8 h</span>
         </div>
@@ -1627,8 +1681,13 @@ select.modal-input { background: #fff; }
           <button class="connect-btn" id="googleConnectBtn">Verbinden</button>
         </div>
         <div id="kalenderAuswahlWrap" style="display:none;">
-          <div class="kalender-auswahl-hint">Zusätzliche Kalender anzeigen:</div>
+          <div class="kalender-auswahl-hint">Personen:</div>
+          <div id="personenListe" class="personen-liste"></div>
+          <div class="kalender-auswahl-hint">Kalender · Person · 💼 = Arbeit:</div>
           <div id="kalenderAuswahlListe" class="kalender-auswahl-liste"></div>
+          <div class="kalender-auswahl-hint" style="margin-top:14px;">Weitere Google-Konten (nur Kalender):</div>
+          <div id="zusatzKontenListe"></div>
+          <button type="button" class="konto-add-btn" id="googleKontoHinzuBtn">+ Weiteres Google-Konto</button>
         </div>
 
         <!-- Trello -->
@@ -1725,7 +1784,7 @@ select.modal-input { background: #fff; }
         <button class="vorschlag-btn" id="vorratNeuBtn">+ Artikel</button>
       </div>
       <div class="suche-wrap">
-        <input type="search" id="vorratSuche" class="suche-input" placeholder="🔍 Artikel, Lagerort oder Kategorie…" autocomplete="off" />
+        <input type="search" id="vorratSuche" class="suche-input" placeholder="🔍 Artikel, Lagerort, Fach oder Kategorie…" autocomplete="off" />
         <button type="button" class="suche-leeren" id="vorratSucheLeeren" style="display:none;" aria-label="Suche leeren">✕</button>
       </div>
       <div id="vorratSucheInfo" class="suche-info" style="display:none;"></div>
@@ -1816,6 +1875,9 @@ select.modal-input { background: #fff; }
           <label class="modal-label">❄️ Eingefroren am</label>
           <input class="modal-input" id="vmEingefroren" type="date" />
         </div>
+        <label class="modal-label">Fach / Notiz (optional)</label>
+        <input class="modal-input" id="vmNotiz" autocomplete="off" placeholder="z.B. Fach 3, unten links" />
+        <div class="vorschlag-chips" id="vmNotizChips"></div>
         <label class="modal-label">Ablaufdatum (MHD, optional)</label>
         <input class="modal-input" id="vmMhd" type="date" />
         <label class="modal-check"><input type="checkbox" id="vmIstRest" /> Reste (sollen bald aufgegessen werden)</label>
@@ -2074,6 +2136,119 @@ function formatDayShort(date) {
 }
 
 // ── KAPAZITÄT BERECHNUNG ──────────────────────────────────────
+// ── PERSONEN ──────────────────────────────────────────────────
+// Jeder Kalender gehört einer Person oder ist "gemeinsam". Der Puffer
+// zählt nur Termine des Hauptnutzers + gemeinsame (jeweils ohne Arbeit).
+// Termine der anderen Person (inkl. deren Arbeit) zählen nicht.
+const PERSONEN_FARBEN = ['#1E6FD9', '#F2C200', '#16A085', '#E67E22', '#C0392B', '#2E7D32'];
+const GEMEINSAM = { id: 'gemeinsam', name: 'Gemeinsam', farbe: '#8E44AD' };
+
+// Lesbare Schriftfarbe je Hintergrund (Gelb -> dunkle Schrift)
+function schriftFarbe(hex) {
+  const h = (hex || '#000').replace('#', '');
+  const r = parseInt(h.substr(0, 2), 16), g = parseInt(h.substr(2, 2), 16), b = parseInt(h.substr(4, 2), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 160 ? '#2b2b2b' : '#fff';
+}
+
+function getPersonen() {
+  const gespeichert = LS.get('ff_personen', null);
+  if (gespeichert) {
+    // einmalige Umstellung der alten Standardfarben (grün/lila) auf blau/gelb
+    const alt = { '#2E7D32': '#1E6FD9', '#8E44AD': '#F2C200' };
+    let geaendert = false;
+    const neu = gespeichert.map((p, i) => {
+      if (i < 2 && alt[p.farbe] && (i === 0 ? p.farbe === '#2E7D32' : p.farbe === '#8E44AD')) {
+        geaendert = true; return { ...p, farbe: alt[p.farbe] };
+      }
+      return p;
+    });
+    if (geaendert) LS.set('ff_personen', neu);
+    return neu;
+  }
+  return LS.get('ff_personen', [
+    { id: 'p1', name: 'Stefan', farbe: PERSONEN_FARBEN[0] },
+    { id: 'p2', name: 'Anja',   farbe: PERSONEN_FARBEN[1] },
+  ]);
+}
+function getHauptnutzer() {
+  const personen = getPersonen();
+  const id = LS.get('ff_hauptnutzer', personen[0]?.id);
+  return personen.some(p => p.id === id) ? id : personen[0]?.id;
+}
+function setHauptnutzer(id) { LS.set('ff_hauptnutzer', id); }
+function personInfo(pid) {
+  if (pid === 'gemeinsam') return GEMEINSAM;
+  return getPersonen().find(p => p.id === pid) || GEMEINSAM;
+}
+
+// Zuordnung Kalender -> Person. Ohne Festlegung: primärer Kalender des
+// Hauptkontos = 1. Person, primärer Kalender eines Zusatzkontos = 2. Person,
+// alles andere = gemeinsam.
+function personVonKalender(calId) {
+  const map = LS.get('ff_kalender_person', {});
+  if (map[calId]) return map[calId];
+  const personen = getPersonen();
+  const hauptPrimaer = (LS.get('ff_calendarListCache', []) || []).find(c => c.primary)?.id;
+  if (calId && calId === hauptPrimaer) return personen[0]?.id || 'gemeinsam';
+  if (getZusatzkonten().some(k => k.email === calId)) return personen[1]?.id || 'gemeinsam';
+  return 'gemeinsam';
+}
+function setPersonVonKalender(calId, pid) {
+  const map = LS.get('ff_kalender_person', {});
+  map[calId] = pid;
+  LS.set('ff_kalender_person', map);
+}
+
+function personSelectHtml(calId) {
+  const aktuell = personVonKalender(calId);
+  return `<select class="person-select" data-person-cal="${escAttr(calId)}" title="Wem gehört dieser Kalender?">
+    ${[...getPersonen(), GEMEINSAM].map(p =>
+      `<option value="${p.id}" ${p.id === aktuell ? 'selected' : ''}>${escAttr(p.name)}</option>`).join('')}
+  </select>`;
+}
+function bindePersonSelects(container) {
+  container.querySelectorAll('.person-select').forEach(s => s.addEventListener('change', () => {
+    setPersonVonKalender(s.dataset.personCal, s.value);
+    refreshAllViews();
+  }));
+}
+
+// Kleines Namensschild am Termin
+function personBadge(t) {
+  if (!t.calendarId) return '';
+  const p = personInfo(personVonKalender(t.calendarId));
+  return `<span class="person-badge" style="background:${p.farbe};color:${schriftFarbe(p.farbe)};">${escAttr(p.name)}</span>`;
+}
+
+// Personen unter Familie: Name antippen = umbenennen, "+" = neue Person
+function renderPersonen() {
+  const wrap = document.getElementById('personenListe');
+  if (!wrap) return;
+  const personen = getPersonen();
+  wrap.innerHTML = personen.map(p =>
+    `<button type="button" class="person-chip" data-pid="${p.id}" style="border-color:${p.farbe};"><span class="hauptnutzer-punkt" style="background:${p.farbe};"></span>${escAttr(p.name)} ✎</button>`
+  ).join('')
+    + `<span class="person-chip fest" style="border-color:${GEMEINSAM.farbe};"><span class="hauptnutzer-punkt" style="background:${GEMEINSAM.farbe};"></span>${GEMEINSAM.name}</span>`
+    + `<button type="button" class="person-chip neu" id="personNeuBtn">+ Person</button>`;
+
+  wrap.querySelectorAll('.person-chip[data-pid]').forEach(b => b.addEventListener('click', () => {
+    const p = getPersonen().find(x => x.id === b.dataset.pid);
+    const name = prompt('Name der Person:', p.name);
+    if (!name || !name.trim()) return;
+    LS.set('ff_personen', getPersonen().map(x => x.id === p.id ? { ...x, name: name.trim() } : x));
+    renderKalenderAuswahl();
+    refreshAllViews();
+  }));
+  document.getElementById('personNeuBtn').addEventListener('click', () => {
+    const name = prompt('Name der neuen Person:');
+    if (!name || !name.trim()) return;
+    const liste = getPersonen();
+    liste.push({ id: 'p' + Date.now(), name: name.trim(), farbe: PERSONEN_FARBEN[liste.length % PERSONEN_FARBEN.length] });
+    LS.set('ff_personen', liste);
+    renderKalenderAuswahl();
+  });
+}
+
 // ── PUFFER-BERECHNUNG (pro Tag) ───────────────────────────────
 // 24 h minus Schlaf, Haushalt, Training (täglich) minus Arbeit (nur Mo–Fr,
 // nicht an Feiertagen) minus echte Termindauer (ohne ganztägige und ohne
@@ -2097,13 +2272,19 @@ function istArbeitstag(dateStr) {
   return wd >= 1 && wd <= 5 && !istFeiertag(dateStr);
 }
 
-// Termine eines Tages, die zusätzlich zur Arbeitszeit Zeit kosten
+// Termine eines Tages, die den Hauptnutzer zusätzlich zur Arbeitszeit
+// Zeit kosten: eigene + gemeinsame, jeweils ohne Arbeitskalender.
+// Termine der anderen Person zählen nicht (auch nicht deren Arbeit).
 function puffertermine(dateStr) {
   const arbeit = getArbeitskalender();
-  return state.termine.filter(t =>
-    t.date === dateStr && !t.allDay &&
-    t.startMin !== null && t.startMin !== undefined && t.endMin > t.startMin &&
-    !arbeit.includes(t.calendarId));
+  const ich = getHauptnutzer();
+  return state.termine.filter(t => {
+    if (t.date !== dateStr || t.allDay) return false;
+    if (t.startMin === null || t.startMin === undefined || !(t.endMin > t.startMin)) return false;
+    if (arbeit.includes(t.calendarId)) return false;
+    const p = t.calendarId ? personVonKalender(t.calendarId) : 'gemeinsam';
+    return p === ich || p === 'gemeinsam';
+  });
 }
 
 // Stunden aus Terminen; überlappende Termine werden nicht doppelt gezählt
@@ -2119,16 +2300,18 @@ function terminStunden(dateStr) {
 }
 
 // Tagesanpassungen aus den Vorschlägen (z.B. Training auslassen)
+// Schlüssel "Person|Datum" -> "Training auslassen" gilt nur für den Hauptnutzer
 function getTagAnpassung(dateStr) {
-  return LS.get('ff_tag_anpassungen', {})[dateStr] || {};
+  return LS.get('ff_tag_anpassungen', {})[getHauptnutzer() + '|' + dateStr] || {};
 }
 function setzeTagAnpassung(dateStr, schluessel, wert) {
   const alle = LS.get('ff_tag_anpassungen', {});
   // alte Tage aufräumen
   const grenze = datumPlusTage(today(), -7);
-  Object.keys(alle).forEach(d => { if (d < grenze) delete alle[d]; });
-  alle[dateStr] = { ...(alle[dateStr] || {}), [schluessel]: wert };
-  if (!wert) delete alle[dateStr][schluessel];
+  Object.keys(alle).forEach(k => { const d = k.split('|').pop(); if (d < grenze) delete alle[k]; });
+  const key = getHauptnutzer() + '|' + dateStr;
+  alle[key] = { ...(alle[key] || {}), [schluessel]: wert };
+  if (!wert) delete alle[key][schluessel];
   LS.set('ff_tag_anpassungen', alle);
 }
 
@@ -2424,6 +2607,21 @@ function renderPuffer() {
   const hinweis = document.getElementById('pufferHinweis');
   if (hinweis) hinweis.textContent = tagesartText(cap, true);
 
+  // Umschalter Hauptnutzer (Stefan ⇄ Anja): Puffer gilt für diese Person
+  const hnBtn = document.getElementById('hauptnutzerBtn');
+  if (hnBtn) {
+    const personen = getPersonen();
+    const ich = personInfo(getHauptnutzer());
+    hnBtn.style.display = personen.length > 1 ? '' : 'none';
+    hnBtn.innerHTML = `<span class="hauptnutzer-punkt" style="background:${ich.farbe};"></span>${escAttr(ich.name)} ⇄`;
+    hnBtn.onclick = () => {
+      const i = personen.findIndex(p => p.id === getHauptnutzer());
+      setHauptnutzer(personen[(i + 1) % personen.length].id);
+      renderPuffer();
+      showToast(`Puffer für ${personInfo(getHauptnutzer()).name}`);
+    };
+  }
+
   card.classList.remove('puffer-ok', 'puffer-voll', 'puffer-krit');
   card.classList.add('puffer-' + status);
 
@@ -2664,7 +2862,7 @@ function renderTermine() {
           <div>
             <div class="termin-title">${t.title}</div>
             ${t.subtitle ? `<div class="termin-subtitle">${t.subtitle}</div>` : ''}
-            ${t.calendarName ? `<div class="termin-kalendername">${t.calendarName}</div>` : ''}
+            ${t.calendarName ? `<div class="termin-kalendername">${personBadge(t)}${t.calendarName}</div>` : ''}
           </div>
         </li>`).join('')
     : '<li class="empty-state">Keine Termine heute.</li>';
@@ -3106,6 +3304,7 @@ function renderKalender() {
                   <span class="kalender-event-time">${t.time}</span>
                   ${t.calendarColor ? `<span class="kalender-farbpunkt" style="background:${t.calendarColor};"></span>` : ''}
                   <span class="kalender-event-title">${t.title}</span>
+                  ${t.calendarId ? personBadge(t) : ''}
                   ${t.calendarName ? `<span class="kalender-event-kalname">${t.calendarName}</span>` : ''}
                 </div>`).join('')
             : '<span style="font-size:.82rem;color:var(--muted);padding-left:4px;">Frei</span>'
@@ -3569,7 +3768,7 @@ function suchKey(s) {
 function vorratPasstZurSuche(v, suche) {
   const woerter = suchKey(suche).split(/\s+/).filter(Boolean);
   if (!woerter.length) return true;
-  const heuhaufen = suchKey([v.title, v.lagerort, v.kategorie || guessKategorie(v.title)].join(' '));
+  const heuhaufen = suchKey([v.title, v.lagerort, v.kategorie || guessKategorie(v.title), v.notiz].join(' '));
   return woerter.every(w => heuhaufen.includes(w));
 }
 
@@ -3770,7 +3969,7 @@ function renderVorratItem(v) {
   return `
     <div class="vorrat-item ${statusKlasse}" data-vid="${v.id}">
       <div class="vorrat-item-kopf">
-        <span class="vorrat-item-titel">${v.title}</span>
+        <span class="vorrat-item-titel">${v.title}${v.notiz ? `<span class="vorrat-notiz">📍 ${escAttr(v.notiz)}</span>` : ''}</span>
         <span class="vorrat-kopf-rechts">
           ${badge}
           <button class="vorrat-edit-btn" data-vid="${v.id}" title="Bearbeiten">✎</button>
@@ -3802,6 +4001,7 @@ function merkeVorratImKatalog(v) {
     kategorie: v.kategorie || null,
     lagerort: v.lagerort || '',
     einzelmenge: v.einzelmenge ?? null,
+    notiz: v.notiz || '',
   };
   LS.set('ff_vorrat_katalog', k);
 }
@@ -3910,6 +4110,7 @@ function openVorratModal(id) {
   document.getElementById('vmKategorie').value   = v?.kategorie || 'Vorrat';
   document.getElementById('vmLagerort').value    = v?.lagerort || '';
   document.getElementById('vmMhd').value         = v?.mhd || '';
+  document.getElementById('vmNotiz').value       = v?.notiz || '';
   document.getElementById('vmIstRest').checked   = !!v?.istRest;
   document.getElementById('vmEingefroren').value = v?.angelegtAm || today();
   document.getElementById('vmLoeschen').style.display = v ? '' : 'none';
@@ -3936,6 +4137,13 @@ function renderVorratChips() {
     aktualisiereEingefrorenFeld();
     renderVorratChips();
   }, 8);
+
+  // Fach-Vorschläge: Notizen anderer Artikel am gleichen Lagerort
+  const ort = normKey(document.getElementById('vmLagerort').value);
+  const faecher = ort
+    ? LS.get('ff_vorrat', []).filter(x => normKey(x.lagerort) === ort && x.notiz).map(x => x.notiz)
+    : [];
+  zeigeChips('vmNotizChips', 'vmNotiz', faecher, renderVorratChips, 8);
 }
 
 // Bekannten Artikel gewählt -> Eigenschaften vom letzten Mal vorausfüllen.
@@ -3948,6 +4156,8 @@ function fuelleVorratAusKatalog() {
   if (eintrag.kategorie) document.getElementById('vmKategorie').value = eintrag.kategorie;
   if (eintrag.lagerort)  document.getElementById('vmLagerort').value = eintrag.lagerort;
   if (eintrag.einzelmenge) document.getElementById('vmEinzelmenge').value = eintrag.einzelmenge;
+  const notizFeld = document.getElementById('vmNotiz');
+  if (eintrag.notiz && !notizFeld.value) notizFeld.value = eintrag.notiz;
   aktualisiereEingefrorenFeld();
 }
 
@@ -3962,6 +4172,7 @@ function setupVorratModal() {
   document.getElementById('vmAbbrechen').addEventListener('click', close);
   document.getElementById('vmLagerort').addEventListener('input', () => { aktualisiereEingefrorenFeld(); renderVorratChips(); });
   document.getElementById('vmArtikel').addEventListener('input', () => { fuelleVorratAusKatalog(); renderVorratChips(); });
+  document.getElementById('vmNotiz').addEventListener('input', renderVorratChips);
 
   // Packungsgröße × Anzahl füllt die Gesamtmenge automatisch vor
   const autoMenge = () => {
@@ -3999,6 +4210,7 @@ function setupVorratModal() {
       anzahl: zahl('vmAnzahl') !== null ? Math.round(zahl('vmAnzahl')) : null,
       istRest,
       angelegtAm,
+      notiz: document.getElementById('vmNotiz').value.trim(),
     };
 
     const vorrat = LS.get('ff_vorrat', []);
@@ -4938,6 +5150,8 @@ function getArbeitskalender(calList) {
 }
 
 async function renderKalenderAuswahl() {
+  renderPersonen();
+  renderZusatzKonten(); // unabhängig von der Liste des Hauptkontos
   const wrap = document.getElementById('kalenderAuswahlListe');
   let calList = LS.get('ff_calendarListCache', null);
 
@@ -4948,33 +5162,30 @@ async function renderKalenderAuswahl() {
   }
 
   const selected = getSelectedCalendarIds();
-  const zusatzKalender = calList.filter(c => !c.primary);
+  // Primärer Kalender (immer aktiv) zuerst, damit auch ihm eine Person zugeordnet werden kann
+  const kalender = calList.slice().sort((a, b) => (b.primary ? 1 : 0) - (a.primary ? 1 : 0));
 
-  if (!zusatzKalender.length) {
-    wrap.innerHTML = '<div class="kalender-auswahl-loading">Keine weiteren Kalender gefunden.</div>';
+  if (!kalender.length) {
+    wrap.innerHTML = '<div class="kalender-auswahl-loading">Keine Kalender gefunden.</div>';
     return;
   }
 
   const arbeit = getArbeitskalender(calList);
-  wrap.innerHTML = zusatzKalender.map(c => `
+  wrap.innerHTML = kalender.map(c => `
     <div class="kalender-auswahl-zeile">
       <label class="kalender-auswahl-item">
-        <input type="checkbox" data-calid="${c.id}" ${selected.includes(c.id) ? 'checked' : ''} />
+        <input type="checkbox" data-calid="${c.id}" ${c.primary || selected.includes(c.id) ? 'checked' : ''} ${c.primary ? 'disabled' : ''} />
         <span class="kalender-farbpunkt" style="background:${c.color};"></span>
         <span class="kalender-auswahl-name">${c.name}</span>
       </label>
+      ${personSelectHtml(c.id)}
       <button type="button" class="arbeit-toggle${arbeit.includes(c.id) ? ' aktiv' : ''}" data-arbeit="${escAttr(c.id)}"
-        title="Termine dieses Kalenders zählen als Arbeitszeit (nicht zusätzlich im Puffer)">💼 Arbeit</button>
+        title="Termine dieses Kalenders zählen als Arbeitszeit (nicht zusätzlich im Puffer)">💼</button>
     </div>
   `).join('');
 
-  wrap.querySelectorAll('.arbeit-toggle').forEach(b => b.addEventListener('click', () => {
-    const ids = new Set(getArbeitskalender(calList));
-    if (ids.has(b.dataset.arbeit)) ids.delete(b.dataset.arbeit); else ids.add(b.dataset.arbeit);
-    LS.set('ff_arbeitskalender', [...ids]);
-    b.classList.toggle('aktiv');
-    renderPuffer();
-  }));
+  bindeArbeitToggles(wrap);
+  bindePersonSelects(wrap);
 
   wrap.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('change', async () => {
@@ -5196,6 +5407,7 @@ function init() {
     if (window.google && window.google.accounts) {
       clearInterval(waitForGoogle);
       initGoogleAuth();
+      initZusatzTokenClient();
     }
   }, 200);
 
@@ -5320,6 +5532,161 @@ function renderConnectionsSicher() {
   if (document.getElementById('sheetsStatus')) renderConnections();
 }
 
+// ── WEITERE GOOGLE-KONTEN (nur Kalender, nur lesend) ──────────
+// Gespeichert: [{ email, token, expiresAt, ausgewaehlt: [calIds], kalenderCache }]
+const ZUSATZ_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+let googleZusatzClient = null;
+let _zusatzWarter = null;
+
+function getZusatzkonten() { return LS.get('ff_google_zusatzkonten', []); }
+function speichereZusatzkonto(konto) {
+  const liste = getZusatzkonten().filter(k => k.email !== konto.email);
+  LS.set('ff_google_zusatzkonten', [...liste, konto]);
+}
+function zusatzkontoGueltig(konto) {
+  return !!(konto?.token && konto.expiresAt && Date.now() < konto.expiresAt);
+}
+
+// Eigener Token-Client: fordert NUR Kalender-Lesezugriff an
+function initZusatzTokenClient() {
+  if (googleZusatzClient || !window.google?.accounts?.oauth2) return;
+  googleZusatzClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: ZUSATZ_SCOPE,
+    callback: resp => { const w = _zusatzWarter; _zusatzWarter = null; if (w) w(resp); },
+    error_callback: err => { const w = _zusatzWarter; _zusatzWarter = null; if (w) w({ error: err?.type || 'abgebrochen' }); },
+  });
+}
+
+function holeZusatzToken(optionen) {
+  initZusatzTokenClient();
+  if (!googleZusatzClient) return Promise.resolve({ error: 'Google nicht geladen' });
+  return new Promise(resolve => {
+    _zusatzWarter = resolve;
+    googleZusatzClient.requestAccessToken(optionen);
+  });
+}
+
+// "+ Weiteres Google-Konto": Kontoauswahl von Google öffnen
+async function fuegeGoogleKontoHinzu() {
+  const resp = await holeZusatzToken({ prompt: 'select_account' });
+  if (resp.error) { if (resp.error !== 'popup_closed') showToast('Anmeldung abgebrochen.'); return; }
+
+  const token = resp.access_token;
+  const calList = await fetchGoogleCalendarList(token);
+  const primaer = calList.find(c => c.primary);
+  if (!primaer) { showToast('Kalender des Kontos konnten nicht gelesen werden.'); return; }
+  const email = primaer.id; // ID des primären Kalenders = E-Mail des Kontos
+
+  const hauptEmail = (LS.get('ff_calendarListCache', []) || []).find(c => c.primary)?.id;
+  if (email === hauptEmail) { showToast('Das ist bereits dein Hauptkonto.'); return; }
+
+  const bisher = getZusatzkonten().find(k => k.email === email);
+  speichereZusatzkonto({
+    email, token,
+    expiresAt: Date.now() + resp.expires_in * 1000 - 60000,
+    ausgewaehlt: bisher?.ausgewaehlt || [primaer.id], // Standard: primärer Kalender
+    kalenderCache: calList,
+  });
+  showToast(bisher ? `${email} neu angemeldet ✓` : `${email} hinzugefügt ✓`);
+  await syncGoogleCalendar();
+  renderKalenderAuswahl();
+  refreshAllViews();
+}
+
+// Anmeldung eines Zusatzkontos erneuern (Google-Anmeldung gilt ~1 Stunde)
+async function meldeZusatzkontoNeuAn(email) {
+  const resp = await holeZusatzToken({ prompt: '', login_hint: email, hint: email });
+  if (resp.error) { showToast('Anmeldung fehlgeschlagen – bitte erneut versuchen.'); return; }
+  const konto = getZusatzkonten().find(k => k.email === email);
+  if (!konto) return;
+  speichereZusatzkonto({ ...konto, token: resp.access_token, expiresAt: Date.now() + resp.expires_in * 1000 - 60000 });
+  await syncGoogleCalendar();
+  renderKalenderAuswahl();
+  refreshAllViews();
+  showToast('Kalender aktualisiert ✓');
+}
+
+async function entferneZusatzkonto(email) {
+  if (!confirm(`Konto ${email} entfernen? Seine Termine werden nicht mehr angezeigt.`)) return;
+  const konto = getZusatzkonten().find(k => k.email === email);
+  if (konto?.token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(konto.token, () => {});
+  LS.set('ff_google_zusatzkonten', getZusatzkonten().filter(k => k.email !== email));
+  save('termine', state.termine.filter(t => t.kontoEmail !== email));
+  renderKalenderAuswahl();
+  refreshAllViews();
+  showToast('Konto entfernt ✓');
+}
+
+// Kalenderauswahl der Zusatzkonten unter Familie
+function renderZusatzKonten() {
+  const wrap = document.getElementById('zusatzKontenListe');
+  if (!wrap) return;
+  const konten = getZusatzkonten();
+  const arbeit = getArbeitskalender();
+
+  wrap.innerHTML = konten.map(k => {
+    const gueltig = zusatzkontoGueltig(k);
+    const auswahl = k.ausgewaehlt || [];
+    const kalender = (k.kalenderCache || []).slice().sort((a, b) => (b.primary ? 1 : 0) - (a.primary ? 1 : 0));
+    return `
+      <div class="zusatzkonto">
+        <div class="zusatzkonto-kopf">
+          <span class="zusatzkonto-name">👤 ${escAttr(k.email)}</span>
+          <span class="zusatzkonto-status${gueltig ? '' : ' abgelaufen'}">${gueltig ? 'aktuell' : 'Anmeldung abgelaufen'}</span>
+          <button type="button" class="zusatzkonto-btn" data-neu="${escAttr(k.email)}" title="Neu anmelden &amp; aktualisieren">↻</button>
+          <button type="button" class="zusatzkonto-btn" data-weg="${escAttr(k.email)}" title="Konto entfernen">✕</button>
+        </div>
+        ${kalender.map(c => `
+          <div class="kalender-auswahl-zeile">
+            <label class="kalender-auswahl-item">
+              <input type="checkbox" data-konto="${escAttr(k.email)}" data-zcal="${escAttr(c.id)}" ${auswahl.includes(c.id) ? 'checked' : ''} />
+              <span class="kalender-farbpunkt" style="background:${c.color};"></span>
+              <span class="kalender-auswahl-name">${escAttr(c.name)}</span>
+            </label>
+            ${personSelectHtml(c.id)}
+            <button type="button" class="arbeit-toggle${arbeit.includes(c.id) ? ' aktiv' : ''}" data-arbeit="${escAttr(c.id)}"
+              title="Termine dieses Kalenders zählen als Arbeitszeit">💼</button>
+          </div>`).join('')}
+      </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('[data-neu]').forEach(b => b.addEventListener('click', () => meldeZusatzkontoNeuAn(b.dataset.neu)));
+  wrap.querySelectorAll('[data-weg]').forEach(b => b.addEventListener('click', () => entferneZusatzkonto(b.dataset.weg)));
+  bindeArbeitToggles(wrap);
+  bindePersonSelects(wrap);
+
+  wrap.querySelectorAll('input[data-zcal]').forEach(cb => cb.addEventListener('change', async () => {
+    const konto = getZusatzkonten().find(k => k.email === cb.dataset.konto);
+    if (!konto) return;
+    const ids = new Set(konto.ausgewaehlt || []);
+    if (cb.checked) ids.add(cb.dataset.zcal); else ids.delete(cb.dataset.zcal);
+    speichereZusatzkonto({ ...konto, ausgewaehlt: [...ids] });
+    if (!zusatzkontoGueltig(konto)) {
+      showToast('Gespeichert – zum Laden bitte ↻ beim Konto tippen.', 4000);
+      return;
+    }
+    showToast('Wird synchronisiert…');
+    await syncGoogleCalendar();
+    refreshAllViews();
+    showToast('Kalender aktualisiert ✓');
+  }));
+
+  const addBtn = document.getElementById('googleKontoHinzuBtn');
+  if (addBtn) addBtn.onclick = fuegeGoogleKontoHinzu;
+}
+
+// "💼 Arbeit"-Schalter (für Haupt- und Zusatzkonten gleich)
+function bindeArbeitToggles(container) {
+  container.querySelectorAll('.arbeit-toggle').forEach(b => b.addEventListener('click', () => {
+    const ids = new Set(getArbeitskalender());
+    if (ids.has(b.dataset.arbeit)) ids.delete(b.dataset.arbeit); else ids.add(b.dataset.arbeit);
+    LS.set('ff_arbeitskalender', [...ids]);
+    b.classList.toggle('aktiv');
+    renderPuffer();
+  }));
+}
+
 function connectGoogle() {
   if (!googleTokenClient) { showToast('Google-Login wird noch geladen…'); return; }
   googleTokenClient.requestAccessToken();
@@ -5346,11 +5713,11 @@ async function onGoogleConnected() {
 // ── GOOGLE CALENDAR ───────────────────────────────────────────
 // Google-Kalenderfarben (calendarListEntry.colorId ist nicht immer gesetzt,
 // backgroundColor ist zuverlässiger und kommt direkt als Hex-Wert).
-async function fetchGoogleCalendarList() {
-  if (!isGoogleConnected()) return [];
+async function fetchGoogleCalendarList(token = isGoogleConnected() ? googleAccessToken.token : null) {
+  if (!token) return [];
   try {
     const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
-      headers: { Authorization: `Bearer ${googleAccessToken.token}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) throw new Error('CalendarList API: ' + res.status);
     const data = await res.json();
@@ -5375,74 +5742,108 @@ function setSelectedCalendarIds(ids) {
   LS.set('ff_selectedCalendars', ids);
 }
 
-async function syncGoogleCalendar() {
-  if (!isGoogleConnected()) return;
-  try {
-    const timeMin = new Date();
-    timeMin.setHours(0, 0, 0, 0);
-    const timeMax = new Date(timeMin);
-    timeMax.setDate(timeMax.getDate() + 7);
+// Wandelt ein Google-Event in einen FamilyFlow-Termin um
+function mappeKalenderEvent(ev, cal, kontoEmail) {
+  const startRaw = ev.start?.dateTime || ev.start?.date;
+  const isAllDay = !ev.start?.dateTime;
+  // Ganztägige Termine kommen als reines Datum -> mittags parsen, damit
+  // keine Zeitzone den Tag verschiebt
+  const dt = isAllDay ? new Date(startRaw + 'T12:00:00') : new Date(startRaw);
 
-    const calList = await fetchGoogleCalendarList();
-    const selectedIds = getSelectedCalendarIds();
+  // Start/Ende in Minuten ab Mitternacht (für die Puffer-Berechnung).
+  // Endet ein Termin erst am Folgetag, zählt er bis Mitternacht.
+  let startMin = null, endMin = null;
+  if (!isAllDay && ev.end?.dateTime) {
+    const ende = new Date(ev.end.dateTime);
+    startMin = dt.getHours() * 60 + dt.getMinutes();
+    endMin = toLocalDateStr(ende) === toLocalDateStr(dt)
+      ? ende.getHours() * 60 + ende.getMinutes()
+      : 24 * 60;
+  }
 
-    // Primärer Kalender immer dabei, plus alle vom Nutzer ausgewählten
-    const calendarsToSync = calList.filter(c => c.primary || selectedIds.includes(c.id));
-    LS.set('ff_calendarListCache', calList); // für die Auswahl-UI
+  return {
+    id:       'g_' + (kontoEmail ? kontoEmail + '_' : '') + cal.id + '_' + ev.id,
+    time:     isAllDay ? 'Ganztägig' : dt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
+    title:    ev.summary || '(Ohne Titel)',
+    subtitle: ev.location || '',
+    source:   'google',
+    date:     toLocalDateStr(dt),
+    allDay:   isAllDay,
+    startMin, endMin,
+    calendarId:    cal.id,
+    calendarName:  cal.name,
+    calendarColor: cal.color,
+    kontoEmail:    kontoEmail || null,      // null = Hauptkonto
+    dedupKey:      (ev.iCalUID || ev.id) + '|' + startRaw, // gleicher Termin über zwei Konten
+  };
+}
 
-    const allEvents = [];
+// Lädt die Termine der angegebenen Kalender mit dem Token EINES Kontos
+async function ladeKalenderEvents(token, kalender, kontoEmail) {
+  const timeMin = new Date();
+  timeMin.setHours(0, 0, 0, 0);
+  const timeMax = new Date(timeMin);
+  timeMax.setDate(timeMax.getDate() + 7);
 
-    for (const cal of calendarsToSync) {
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?` +
-        `timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}` +
-        `&singleEvents=true&orderBy=startTime`;
-
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${googleAccessToken.token}` },
-      });
-      if (!res.ok) {
-        console.warn(`Kalender "${cal.name}" konnte nicht geladen werden: ${res.status}`);
-        continue; // ein fehlerhafter Kalender soll die anderen nicht blockieren
-      }
-      const data = await res.json();
-
-      (data.items || []).forEach(ev => {
-        const startRaw = ev.start?.dateTime || ev.start?.date;
-        const isAllDay = !ev.start?.dateTime;
-        // Ganztägige Termine kommen als reines Datum -> mittags parsen, damit
-        // keine Zeitzone den Tag verschiebt
-        const dt = isAllDay ? new Date(startRaw + 'T12:00:00') : new Date(startRaw);
-
-        // Start/Ende in Minuten ab Mitternacht (für die Puffer-Berechnung).
-        // Endet ein Termin erst am Folgetag, zählt er bis Mitternacht.
-        let startMin = null, endMin = null;
-        if (!isAllDay && ev.end?.dateTime) {
-          const ende = new Date(ev.end.dateTime);
-          startMin = dt.getHours() * 60 + dt.getMinutes();
-          endMin = toLocalDateStr(ende) === toLocalDateStr(dt)
-            ? ende.getHours() * 60 + ende.getMinutes()
-            : 24 * 60;
-        }
-
-        allEvents.push({
-          id:       'g_' + cal.id + '_' + ev.id,
-          time:     isAllDay ? 'Ganztägig' : dt.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
-          title:    ev.summary || '(Ohne Titel)',
-          subtitle: ev.location || '',
-          source:   'google',
-          date:     toLocalDateStr(dt),
-          allDay:   isAllDay,
-          startMin, endMin,
-          calendarId:    cal.id,
-          calendarName:  cal.name,
-          calendarColor: cal.color,
-        });
-      });
+  const events = [];
+  for (const cal of kalender) {
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?` +
+      `timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}` +
+      `&singleEvents=true&orderBy=startTime&maxResults=250`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      console.warn(`Kalender "${cal.name}" konnte nicht geladen werden: ${res.status}`);
+      continue; // ein fehlerhafter Kalender soll die anderen nicht blockieren
     }
+    const data = await res.json();
+    (data.items || []).forEach(ev => events.push(mappeKalenderEvent(ev, cal, kontoEmail)));
+  }
+  return events;
+}
+
+async function syncGoogleCalendar() {
+  if (!isGoogleConnected() && !getZusatzkonten().length) return;
+  try {
+    const alleEvents = [];
+
+    // Hauptkonto: primärer Kalender immer + ausgewählte weitere
+    if (isGoogleConnected()) {
+      const calList = await fetchGoogleCalendarList();
+      LS.set('ff_calendarListCache', calList); // für die Auswahl-UI
+      const selectedIds = getSelectedCalendarIds();
+      const kalender = calList.filter(c => c.primary || selectedIds.includes(c.id));
+      alleEvents.push(...await ladeKalenderEvents(googleAccessToken.token, kalender, null));
+    } else {
+      // Anmeldung abgelaufen: bisherige Termine des Hauptkontos behalten
+      alleEvents.push(...state.termine.filter(t => t.source === 'google' && !t.kontoEmail));
+    }
+
+    // Zusatzkonten (nur Kalender, nur lesend)
+    for (const konto of getZusatzkonten()) {
+      if (zusatzkontoGueltig(konto)) {
+        const calList = await fetchGoogleCalendarList(konto.token);
+        if (calList.length) speichereZusatzkonto({ ...konto, kalenderCache: calList });
+        const auswahl = konto.ausgewaehlt || calList.filter(c => c.primary).map(c => c.id);
+        const kalender = calList.filter(c => auswahl.includes(c.id));
+        alleEvents.push(...await ladeKalenderEvents(konto.token, kalender, konto.email));
+      } else {
+        // Anmeldung des Zusatzkontos abgelaufen: bisherige Termine behalten
+        alleEvents.push(...state.termine.filter(t => t.kontoEmail === konto.email));
+      }
+    }
+
+    // Doppelte Termine (z.B. Kalender geteilt UND über Zusatzkonto) nur einmal
+    const gesehen = new Set();
+    const eindeutig = alleEvents.filter(t => {
+      const key = t.dedupKey || t.id;
+      if (gesehen.has(key)) return false;
+      gesehen.add(key);
+      return true;
+    });
 
     // Manuelle Termine behalten, Google-Termine ersetzen
     const manual = state.termine.filter(t => t.source !== 'google');
-    save('termine', [...manual, ...allEvents]);
+    save('termine', [...manual, ...eindeutig]);
   } catch (err) {
     console.error('Google Calendar Sync Fehler:', err);
     showToast('Kalender-Sync fehlgeschlagen.');
@@ -5563,7 +5964,7 @@ async function schreibeGoogleTaskStatus(aufgabe, done) {
 // Änderungen durch mehrere Personen gewinnt die zuletzt geschriebene
 // Version (kein Konfliktabgleich) -- das ist bewusst so einfach gehalten.
 
-const VORRAT_SHEET_SPALTEN = ['ID','Artikel','Menge','Einheit','Kategorie','Ablaufdatum','Lagerort','Einzelmenge','Anzahl','IstRest','AngelegtAm','ZuletztGeändert'];
+const VORRAT_SHEET_SPALTEN = ['ID','Artikel','Menge','Einheit','Kategorie','Ablaufdatum','Lagerort','Einzelmenge','Anzahl','IstRest','AngelegtAm','ZuletztGeändert','Notiz'];
 const WARTUNG_SHEET_SPALTEN = ['ID','Gerät','Aufgabe','Intervall','ZuletztErledigt','NächsteFälligkeit','Notiz','ZuletztGeändert','Historie'];
 
 // Zwei getrennte Spreadsheets möglich: eins für Vorrat, eins für Wartung.
@@ -5745,10 +6146,11 @@ function vorratItemZuZeile(v) {
     datumZuSheet(v.mhd), v.lagerort ?? '', v.einzelmenge ?? '', v.anzahl ?? '',
     v.istRest ? 'TRUE' : 'FALSE', datumZuSheet(v.angelegtAm),
     new Date().toISOString(),
+    v.notiz ?? '',
   ];
 }
 function zeileZuVorratItem(zeile) {
-  const [id, artikel, menge, einheit, kategorie, ablauf, lagerort, einzelmenge, anzahl, istRest, angelegtAm] = zeile;
+  const [id, artikel, menge, einheit, kategorie, ablauf, lagerort, einzelmenge, anzahl, istRest, angelegtAm, , notiz] = zeile;
   if (!artikel) return null; // leere Zeile überspringen
   return {
     id: id || ('vr_' + uid()),
@@ -5762,6 +6164,7 @@ function zeileZuVorratItem(zeile) {
     anzahl: anzahl !== '' && anzahl != null ? parseInt(anzahl, 10) : null,
     istRest: String(istRest).toUpperCase() === 'TRUE',
     angelegtAm: datumVonSheet(angelegtAm),
+    notiz: notiz ? String(notiz).trim() : '',
   };
 }
 
