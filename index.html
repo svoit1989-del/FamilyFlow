@@ -1036,6 +1036,17 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
 .person-chip.neu { color: var(--muted); border-style: dashed; }
 .arbeit-toggle.aktiv { background: var(--forest); border-color: var(--forest); color: var(--cream); }
 .connect-status.sync-warnung { color: var(--status-mid); font-weight: 700; }
+.paar-zeile { display: flex; align-items: center; gap: 8px; background: var(--cream);
+  border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 6px; }
+.paar-text { flex: 1; font-size: 0.85rem; color: var(--ink); }
+.paar-form { margin-top: 10px; }
+.backup-status { font-size: 0.82rem; font-weight: 700; color: var(--status-ok); margin: 6px 0 12px; }
+.backup-status.warnung { color: var(--status-mid); }
+.backup-aktionen { display: flex; flex-wrap: wrap; gap: 8px; }
+.backup-rueckgaengig {
+  display: block; margin-top: 12px; padding: 0;
+  background: none; color: var(--muted); font-size: 0.78rem; text-decoration: underline;
+}
 .sheets-fehler {
   margin-top: 6px;
   font-size: 0.75rem;
@@ -1752,6 +1763,31 @@ select.modal-input { background: #fff; }
         </div>
         <p class="reset-hint" style="margin-top:8px;">Folgeaufgaben erscheinen, wenn die auslösende Aufgabe abgehakt wird. Materialien kommen auf die Einkaufsliste, wenn sie im Vorrat fehlen.</p>
         <div id="regelnListe"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">🔁 Nachschub zwischen Lagerorten</div>
+        <p class="reset-hint">Ist ein Artikel am Entnahme-Ort aufgebraucht, wird eine Packung aus dem Reserve-Ort umgebucht und eine Aufgabe zum Holen angelegt.</p>
+        <div id="lagerortPaareListe"></div>
+        <div class="paar-form">
+          <input class="modal-input" id="paarReserve" autocomplete="off" placeholder="Reserve, z.B. Gefrierschrank Keller" />
+          <div class="vorschlag-chips" id="paarReserveChips"></div>
+          <input class="modal-input" id="paarEntnahme" autocomplete="off" placeholder="Entnahme, z.B. Gefrierschrank" />
+          <div class="vorschlag-chips" id="paarEntnahmeChips"></div>
+          <button type="button" class="connect-btn" id="paarHinzuBtn">+ Paar hinzufügen</button>
+        </div>
+      </div>
+
+      <div class="card" id="backupCard">
+        <div class="card-label">💾 Datensicherung</div>
+        <p class="reset-hint">Sichert alle Daten dieses Geräts (Vorrat, Wartung, Regeln, Einkauf, Essensplan, Einstellungen) als Datei. Zugangsdaten (Trello-Token, Google-Anmeldung) werden aus Sicherheitsgründen nicht gesichert.</p>
+        <div class="backup-status" id="backupStatus"></div>
+        <div class="backup-aktionen">
+          <button type="button" class="connect-btn" id="backupExportBtn">⬇ Backup herunterladen</button>
+          <button type="button" class="connect-btn secondary" id="backupImportBtn">⬆ Backup einspielen</button>
+        </div>
+        <input type="file" id="backupDatei" accept=".json,application/json" style="display:none;" />
+        <button type="button" class="backup-rueckgaengig" id="backupRueckgaengigBtn" style="display:none;"></button>
       </div>
 
       <div class="card">
@@ -3436,28 +3472,34 @@ function renderEssenView() {
         // (funktioniert für JEDE Karte, auch ohne Pool-Bezug), sonst als
         // Fallback die Pool-Zutaten (für ältere/Vorschlag-Einträge ohne
         // eigene "zutaten").
-        let zutatenListe = entry.zutaten;
-        if (!zutatenListe && entry.poolId) {
-          const pool = LS.get('ff_gerichtPool', []);
-          const gericht = pool.find(g => g.id === entry.poolId);
-          zutatenListe = gericht?.zutaten;
-        }
         let vorratGeaendert = false;
-        if (zutatenListe?.length) {
-          zutatenListe.forEach(z => verbraucheAusVorrat(z.title, z.menge, z.einheit));
-          vorratGeaendert = true;
+
+        // Eingefrorenes Gericht (Trello-Label "Tiefgefroren" oder per Vorschlag
+        // aus dem Gefrierschrank eingeplant): das Gericht ist schon gekocht ->
+        // KEINE Rezept-Zutaten abziehen, sondern 1 Portion des Gerichts selbst.
+        const istTiefgefroren = (entry.tags || []).some(t => String(t).toLowerCase() === 'tiefgefroren');
+        if (istTiefgefroren || entry.kuehltrucheId) {
+          const ergebnis = entnehmeTiefkuehlgericht(entry);
+          vorratGeaendert = ergebnis.geaendert;
+          showToast(ergebnis.meldung, 5000);
+        } else {
+          let zutatenListe = entry.zutaten;
+          if (!zutatenListe && entry.poolId) {
+            const pool = LS.get('ff_gerichtPool', []);
+            const gericht = pool.find(g => g.id === entry.poolId);
+            zutatenListe = gericht?.zutaten;
+          }
+          if (zutatenListe?.length) {
+            zutatenListe.forEach(z => verbraucheAusVorrat(z.title, z.menge, z.einheit));
+            vorratGeaendert = true;
+          }
+        }
+        if (vorratGeaendert) {
           aktualisiereEinkaufslisteGegenVorrat();
           renderBrotvorrat();
         }
 
         if (entry.poolId) markAsEaten(entry.poolId);
-        // Eingefrorenes Gericht aus dem Gefrierschrank gegessen -> Vorrat-
-        // Eintrag entfernen (kuehltrucheId verweist jetzt auf die Vorrat-ID).
-        if (entry.kuehltrucheId) {
-          const updated = LS.get('ff_vorrat', []).filter(v => v.id !== entry.kuehltrucheId);
-          LS.set('ff_vorrat', updated);
-          vorratGeaendert = true;
-        }
 
         // Knackpunkt gelöst: Vorrat-Änderung SOFORT persistent ins Sheet
         // schreiben, statt nur lokal zu reduzieren.
@@ -3469,7 +3511,7 @@ function renderEssenView() {
         essenWoche[day] = tagPlan;
         save('essenWoche', essenWoche);
 
-        showToast('Als gegessen markiert ✓');
+        if (!(istTiefgefroren || entry.kuehltrucheId)) showToast('Als gegessen markiert ✓');
         renderEssenView();
       } catch (err) {
         console.error('Fehler beim Als-gegessen-Markieren:', err);
@@ -3823,7 +3865,7 @@ function renderVorrat() {
     ...VORRAT_LAGERORTE.filter(o => alleOrte.has(o)),
     ...[...alleOrte].filter(o => !VORRAT_LAGERORTE.includes(o)).sort(),
   ];
-  const ORT_ICONS = { Keller: '🧺', Kühlschrank: '🧊', Gefrierschrank: '❄️', Speisekammer: '🥫' };
+  const ORT_ICONS = { Keller: '🧺', Kühlschrank: '🧊', Gefrierschrank: '❄️', 'Gefrierschrank Keller': '❄️', Speisekammer: '🥫' };
 
   wrap.innerHTML = ortReihenfolge.map(ort => {
     const resteHtml = resteNachOrt[ort]?.length
@@ -3872,6 +3914,7 @@ function renderVorrat() {
       }
 
       LS.set('ff_vorrat', updated);
+      if (delta < 0) pruefeNachschub(eintrag.title); // leer geworden -> ggf. aus Reserve umbuchen
       aktualisiereEinkaufslisteGegenVorrat(); // Einkaufsliste sofort neu abgleichen
       schreibeVorratZuSheets();               // sofort persistent ins Sheet
       renderVorrat();
@@ -3902,6 +3945,7 @@ function renderVorrat() {
       }
 
       LS.set('ff_vorrat', updated);
+      if (delta < 0) pruefeNachschub(eintrag.title);
       aktualisiereEinkaufslisteGegenVorrat();
       schreibeVorratZuSheets();
       renderVorrat();
@@ -4211,6 +4255,9 @@ function setupVorratModal() {
       istRest,
       angelegtAm,
       notiz: document.getElementById('vmNotiz').value.trim(),
+      // Anlegezeitpunkt: entscheidet über die Verbrauchsreihenfolge bei
+      // mehreren Positionen ohne MHD
+      erstelltAm: alt?.erstelltAm || (_vorratEditId ? null : new Date().toISOString()),
     };
 
     const vorrat = LS.get('ff_vorrat', []);
@@ -4694,8 +4741,241 @@ function setupRegelModal() {
   document.getElementById('regelNeuBtn').addEventListener('click', () => openRegelModal(null));
 }
 
+// ══════════════════════════════════════════════════════════════
+// ── DATENSICHERUNG (Backup-Export/-Import) ────────────────────
+// ══════════════════════════════════════════════════════════════
+// Sichert alle localStorage-Einträge mit Präfix "ff_" als JSON-Datei.
+// NICHT gesichert: Zugangsdaten (Trello-Token, Google-Token) und interne
+// Sicherungen. Zusatzkonten werden ohne Token gesichert (Konto + Auswahl
+// bleiben, Anmeldung ist danach nötig).
+const BACKUP_FORMAT = 'FamilyFlow-Backup';
+const BACKUP_VERSION = 1;
+const BACKUP_AUSGESCHLOSSEN = [
+  'ff_trello_creds', 'ff_google_token',          // Zugangsdaten
+  'ff_backup_vor_import', 'ff_letztes_backup',   // Sicherungs-Verwaltung selbst
+  'ff_sync_offen', 'ff_sheets_fehler',           // gerätebezogener Sync-Zustand
+];
+const BACKUP_ERINNERUNG_TAGE = 7;
+
+// Liest ALLE ff_-Schlüssel direkt aus localStorage. Beschädigtes JSON geht
+// nicht verloren, sondern wird als Rohtext mitgesichert.
+function sammleBackupDaten() {
+  const daten = {}, roh = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith('ff_') || BACKUP_AUSGESCHLOSSEN.includes(key)) continue;
+    const wert = localStorage.getItem(key);
+    try { daten[key] = JSON.parse(wert); } catch (e) { roh[key] = wert; }
+  }
+  // Zusatzkonten ohne Zugangs-Token sichern
+  if (Array.isArray(daten.ff_google_zusatzkonten)) {
+    daten.ff_google_zusatzkonten = daten.ff_google_zusatzkonten.map(({ token, expiresAt, ...rest }) => rest);
+  }
+  return { daten, roh };
+}
+
+function backupUebersicht(daten) {
+  const anzahl = k => Array.isArray(daten[k]) ? daten[k].length : 0;
+  const teile = [
+    ['Vorrat', anzahl('ff_vorrat')], ['Wartung', anzahl('ff_wartung')], ['Regeln', anzahl('ff_regeln')],
+    ['Einkauf', anzahl('ff_einkauf')], ['Aufgaben', anzahl('ff_aufgaben')], ['Gerichte', anzahl('ff_gerichtPool')],
+  ].filter(([, n]) => n > 0).map(([t, n]) => `${n} ${t}`);
+  return teile.join(', ') || 'keine Listen';
+}
+
+function exportiereBackup() {
+  const { daten, roh } = sammleBackupDaten();
+  const jetzt = new Date();
+  const backup = {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    erstellt: jetzt.toISOString(),
+    geraet: navigator.userAgent.slice(0, 120),
+    daten,
+    roh, // beschädigte Einträge als Rohtext
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const zwei = n => String(n).padStart(2, '0');
+  const name = `familyflow-backup-${toLocalDateStr(jetzt)}_${zwei(jetzt.getHours())}${zwei(jetzt.getMinutes())}.json`;
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  localStorage.setItem('ff_letztes_backup', JSON.stringify(jetzt.toISOString()));
+  renderBackupStatus();
+  showToast(`Backup gespeichert (${backupUebersicht(daten)})`, 5000);
+}
+
+// Einspielen: prüft die Datei, sichert vorher den aktuellen Stand, ersetzt
+// dann alle ff_-Daten (Zugangsdaten bleiben unangetastet) und lädt neu.
+async function importiereBackup(datei) {
+  let backup;
+  try {
+    backup = JSON.parse(await datei.text());
+  } catch (e) {
+    showToast('Die Datei ist kein gültiges Backup (kein JSON).', 6000);
+    return;
+  }
+  if (backup?.format !== BACKUP_FORMAT || typeof backup.daten !== 'object') {
+    showToast('Die Datei ist kein FamilyFlow-Backup.', 6000);
+    return;
+  }
+
+  const datum = new Date(backup.erstellt).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  if (!confirm(`Backup vom ${datum} einspielen?\n\nInhalt: ${backupUebersicht(backup.daten)}\n\nDie aktuellen Daten dieses Geräts werden ersetzt. Der jetzige Stand wird vorher automatisch gesichert und kann rückgängig gemacht werden.`)) return;
+
+  const insSheet = (getSheetId('vorrat') || getSheetId('wartung')) &&
+    confirm('Wiederhergestellte Daten auch in Google Sheets übertragen?\n\nOK = Vorrat, Wartung und Regeln im Sheet durch das Backup ersetzen.\nAbbrechen = nur auf diesem Gerät wiederherstellen (beim nächsten Laden gewinnt dann der Stand im Sheet).');
+
+  // 1) Aktuellen Stand sichern (für "Rückgängig")
+  const vorher = sammleBackupDaten();
+  try {
+    localStorage.setItem('ff_backup_vor_import', JSON.stringify({ erstellt: new Date().toISOString(), ...vorher }));
+  } catch (e) {
+    if (!confirm('Der aktuelle Stand konnte nicht zwischengespeichert werden (Speicher voll). Trotzdem einspielen?')) return;
+  }
+
+  // 2) Bisherige ff_-Daten entfernen (außer Zugangsdaten und Sicherung)
+  stelleBackupDatenWieder(backup.daten, backup.roh || {});
+
+  // 3) Optional: Sheet-Bereiche als "nicht übertragen" markieren -> werden beim
+  //    Start hochgeladen (bzw. per ↻, falls die Google-Anmeldung abgelaufen ist)
+  if (insSheet) {
+    const offen = {};
+    ['vorrat', 'wartung', 'regeln'].forEach(b => { offen[b] = Date.now() + Math.random(); });
+    localStorage.setItem('ff_sync_offen', JSON.stringify(offen));
+  } else {
+    localStorage.removeItem('ff_sync_offen');
+  }
+
+  showToast('Backup eingespielt – App wird neu geladen…', 3000);
+  setTimeout(() => location.reload(), 1200);
+}
+
+function stelleBackupDatenWieder(daten, roh) {
+  const behalten = new Set(BACKUP_AUSGESCHLOSSEN);
+  const zuLoeschen = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('ff_') && !behalten.has(key)) zuLoeschen.push(key);
+  }
+  zuLoeschen.forEach(k => localStorage.removeItem(k));
+  Object.entries(daten).forEach(([k, v]) => {
+    if (k.startsWith('ff_') && !BACKUP_AUSGESCHLOSSEN.includes(k)) localStorage.setItem(k, JSON.stringify(v));
+  });
+  Object.entries(roh).forEach(([k, v]) => {
+    if (k.startsWith('ff_') && !BACKUP_AUSGESCHLOSSEN.includes(k)) localStorage.setItem(k, v);
+  });
+}
+
+function macheImportRueckgaengig() {
+  let sicherung;
+  try { sicherung = JSON.parse(localStorage.getItem('ff_backup_vor_import')); } catch (e) { sicherung = null; }
+  if (!sicherung?.daten) { showToast('Keine Sicherung vorhanden.'); return; }
+  const datum = new Date(sicherung.erstellt).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  if (!confirm(`Zum Stand vor dem Import (${datum}) zurückkehren?`)) return;
+  const insSheet = (getSheetId('vorrat') || getSheetId('wartung')) &&
+    confirm('Auch Google Sheets auf diesen Stand zurücksetzen?\n\nOK = Vorrat, Wartung und Regeln im Sheet ersetzen.\nAbbrechen = nur dieses Gerät (beim nächsten Laden gewinnt dann der Stand im Sheet).');
+  stelleBackupDatenWieder(sicherung.daten, sicherung.roh || {});
+  localStorage.removeItem('ff_backup_vor_import');
+  if (insSheet) {
+    const offen = {};
+    ['vorrat', 'wartung', 'regeln'].forEach(b => { offen[b] = Date.now() + Math.random(); });
+    localStorage.setItem('ff_sync_offen', JSON.stringify(offen));
+  } else {
+    localStorage.removeItem('ff_sync_offen');
+  }
+  showToast('Vorheriger Stand wiederhergestellt – App wird neu geladen…', 3000);
+  setTimeout(() => location.reload(), 1200);
+}
+
+function renderBackupStatus() {
+  const el = document.getElementById('backupStatus');
+  if (!el) return;
+  let letztes = null;
+  try { letztes = JSON.parse(localStorage.getItem('ff_letztes_backup')); } catch (e) {}
+  if (!letztes) {
+    el.innerHTML = '⚠ Noch nie gesichert';
+    el.className = 'backup-status warnung';
+  } else {
+    const tage = Math.floor((Date.now() - new Date(letztes).getTime()) / 86400000);
+    const wann = tage === 0 ? 'heute' : tage === 1 ? 'gestern' : `vor ${tage} Tagen`;
+    el.innerHTML = `${tage >= BACKUP_ERINNERUNG_TAGE ? '⚠' : '✓'} Letzte Sicherung: ${wann}`;
+    el.className = 'backup-status' + (tage >= BACKUP_ERINNERUNG_TAGE ? ' warnung' : '');
+  }
+
+  // "Rückgängig" nur anbieten, solange eine Sicherung vom letzten Import existiert
+  const rueck = document.getElementById('backupRueckgaengigBtn');
+  let vorImport = null;
+  try { vorImport = JSON.parse(localStorage.getItem('ff_backup_vor_import')); } catch (e) {}
+  if (rueck) {
+    if (vorImport?.erstellt) {
+      const d = new Date(vorImport.erstellt).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+      rueck.textContent = `↶ Letzten Import rückgängig machen (Stand vom ${d})`;
+      rueck.style.display = '';
+    } else {
+      rueck.style.display = 'none';
+    }
+  }
+}
+
+function setupBackup() {
+  const datei = document.getElementById('backupDatei');
+  document.getElementById('backupExportBtn').addEventListener('click', exportiereBackup);
+  document.getElementById('backupImportBtn').addEventListener('click', () => { datei.value = ''; datei.click(); });
+  datei.addEventListener('change', () => { if (datei.files?.[0]) importiereBackup(datei.files[0]); });
+  document.getElementById('backupRueckgaengigBtn').addEventListener('click', macheImportRueckgaengig);
+}
+
+function renderLagerortPaare() {
+  const wrap = document.getElementById('lagerortPaareListe');
+  if (!wrap) return;
+  const paare = getLagerortPaare();
+  wrap.innerHTML = paare.length ? paare.map((p, i) => `
+    <div class="paar-zeile">
+      <span class="paar-text">${escAttr(p.reserve)} <b>→</b> ${escAttr(p.entnahme)}</span>
+      <button type="button" class="zusatzkonto-btn" data-paar="${i}" title="Entfernen">✕</button>
+    </div>`).join('') : '<div class="empty-state">Keine Paare – es wird nichts umgebucht.</div>';
+  wrap.querySelectorAll('[data-paar]').forEach(b => b.addEventListener('click', () => {
+    const liste = getLagerortPaare();
+    liste.splice(+b.dataset.paar, 1);
+    LS.set('ff_lagerort_paare', liste);
+    renderLagerortPaare();
+  }));
+  renderPaarChips();
+}
+
+function renderPaarChips() {
+  const orte = [...new Set([...VORRAT_LAGERORTE, 'Gefrierschrank Keller',
+    ...LS.get('ff_vorrat', []).map(v => v.lagerort).filter(Boolean)])];
+  zeigeChips('paarReserveChips', 'paarReserve', orte, renderPaarChips, 8);
+  zeigeChips('paarEntnahmeChips', 'paarEntnahme', orte, renderPaarChips, 8);
+}
+
+function setupLagerortPaare() {
+  document.getElementById('paarReserve').addEventListener('input', renderPaarChips);
+  document.getElementById('paarEntnahme').addEventListener('input', renderPaarChips);
+  document.getElementById('paarHinzuBtn').addEventListener('click', () => {
+    const reserve = document.getElementById('paarReserve').value.trim();
+    const entnahme = document.getElementById('paarEntnahme').value.trim();
+    if (!reserve || !entnahme) { showToast('Bitte Reserve- und Entnahme-Ort angeben.'); return; }
+    if (normKey(reserve) === normKey(entnahme)) { showToast('Reserve und Entnahme müssen verschieden sein.'); return; }
+    const liste = getLagerortPaare().filter(p => normKey(p.reserve) !== normKey(reserve));
+    liste.push({ reserve, entnahme });
+    LS.set('ff_lagerort_paare', liste);
+    document.getElementById('paarReserve').value = '';
+    document.getElementById('paarEntnahme').value = '';
+    renderLagerortPaare();
+    showToast('Paar gespeichert ✓');
+  });
+}
+
 function renderFamilie() {
   renderConnections();
+  renderBackupStatus();
+  renderLagerortPaare();
 
   renderKapazitaet();
 
@@ -5399,6 +5679,8 @@ function init() {
   setupVorratModal();
   setupWartungModal();
   setupRegelModal();
+  setupBackup();
+  setupLagerortPaare();
   setupVorschlagModal();
   setupGerichtAuswahlModal();
   registerServiceWorker();
@@ -5964,7 +6246,7 @@ async function schreibeGoogleTaskStatus(aufgabe, done) {
 // Änderungen durch mehrere Personen gewinnt die zuletzt geschriebene
 // Version (kein Konfliktabgleich) -- das ist bewusst so einfach gehalten.
 
-const VORRAT_SHEET_SPALTEN = ['ID','Artikel','Menge','Einheit','Kategorie','Ablaufdatum','Lagerort','Einzelmenge','Anzahl','IstRest','AngelegtAm','ZuletztGeändert','Notiz'];
+const VORRAT_SHEET_SPALTEN = ['ID','Artikel','Menge','Einheit','Kategorie','Ablaufdatum','Lagerort','Einzelmenge','Anzahl','IstRest','AngelegtAm','ZuletztGeändert','Notiz','ErstelltAm'];
 const WARTUNG_SHEET_SPALTEN = ['ID','Gerät','Aufgabe','Intervall','ZuletztErledigt','NächsteFälligkeit','Notiz','ZuletztGeändert','Historie'];
 
 // Zwei getrennte Spreadsheets möglich: eins für Vorrat, eins für Wartung.
@@ -6147,10 +6429,11 @@ function vorratItemZuZeile(v) {
     v.istRest ? 'TRUE' : 'FALSE', datumZuSheet(v.angelegtAm),
     new Date().toISOString(),
     v.notiz ?? '',
+    v.erstelltAm ?? '',
   ];
 }
 function zeileZuVorratItem(zeile) {
-  const [id, artikel, menge, einheit, kategorie, ablauf, lagerort, einzelmenge, anzahl, istRest, angelegtAm, , notiz] = zeile;
+  const [id, artikel, menge, einheit, kategorie, ablauf, lagerort, einzelmenge, anzahl, istRest, angelegtAm, , notiz, erstelltAm] = zeile;
   if (!artikel) return null; // leere Zeile überspringen
   return {
     id: id || ('vr_' + uid()),
@@ -6165,6 +6448,7 @@ function zeileZuVorratItem(zeile) {
     istRest: String(istRest).toUpperCase() === 'TRUE',
     angelegtAm: datumVonSheet(angelegtAm),
     notiz: notiz ? String(notiz).trim() : '',
+    erstelltAm: erstelltAm ? String(erstelltAm).trim() : null,
   };
 }
 
@@ -6520,7 +6804,7 @@ function parseCardLabels(card) {
 // Eigenständig aufrufbar, damit sie unabhängig vom Haupt-Sync läuft.
 // Lagerort-Listen, die als Vorrat verarbeitet werden. Jede Karte darin
 // bekommt automatisch den Listennamen als "lagerort" zugewiesen.
-const VORRAT_LAGERORTE = ['Kühlschrank', 'Gefrierschrank', 'Keller', 'Speisekammer'];
+const VORRAT_LAGERORTE = ['Kühlschrank', 'Gefrierschrank', 'Gefrierschrank Keller', 'Keller', 'Speisekammer'];
 
 // Trello-Listennamen können unsichtbare führende/abschließende Leerzeichen
 // haben (z.B. "Kühlschrank "), die exakten String-Vergleich scheitern lassen.
@@ -6597,13 +6881,44 @@ async function syncVorratBoard() {
 // Prüft für eine Zutat, ob genug davon im Vorrat liegt. Gibt true zurück
 // wenn die Zutat NICHT eingekauft werden muss (Vorrat reicht), false wenn
 // doch (kein Vorrat, falsche Einheit, oder zu wenig Menge).
+// Alle Vorrat-Positionen eines Artikels in VERBRAUCHSREIHENFOLGE:
+//  1. nach MHD (früheste zuerst)
+//  2. Positionen ohne MHD danach, nach Anlegedatum (älteste zuerst)
+//  3. ohne bekanntes Anlegedatum: Reihenfolge in der Liste (= Reihenfolge im Sheet)
+function vorratPositionenFuer(titel) {
+  const key = normKey(titel);
+  return LS.get('ff_vorrat', [])
+    .map((v, index) => ({ v, index }))
+    .filter(({ v }) => !istBrotEintrag(v) && normKey(v.title) === key)
+    .sort((a, b) => {
+      const ma = a.v.mhd || '9999-12-31', mb = b.v.mhd || '9999-12-31';
+      if (ma !== mb) return ma < mb ? -1 : 1;
+      // gleiches MHD: zuerst aus dem Entnahme-Ort (z.B. Gefrierschrank),
+      // erst dann aus dem Reserve-Ort (z.B. Gefrierschrank Keller)
+      const ra = istReserveOrt(a.v.lagerort) ? 1 : 0, rb = istReserveOrt(b.v.lagerort) ? 1 : 0;
+      if (ra !== rb) return ra - rb;
+      const ea = a.v.erstelltAm || '', eb = b.v.erstelltAm || '';
+      if (ea && eb && ea !== eb) return ea < eb ? -1 : 1;
+      if (ea && !eb) return -1;
+      if (!ea && eb) return 1;
+      return a.index - b.index;
+    })
+    .map(x => x.v);
+}
+
+// Summe ALLER Positionen eines Artikels, umgerechnet in die gewünschte Einheit
+// (z.B. zwei Packungen Mandeln mit unterschiedlichem MHD zählen zusammen)
+function verfuegbareVorratMenge(titel, einheit) {
+  return runde3(vorratPositionenFuer(titel).reduce((summe, v) => {
+    if (v.menge === null || v.menge === undefined || v.menge <= 0) return summe;
+    const m = rechneUm(v.menge, v.einheit, einheit);
+    return m === null ? summe : summe + m;
+  }, 0));
+}
+
 function istImVorratGedeckt(zutat) {
   if (zutat.menge === null || !zutat.einheit) return false; // ohne Menge kein Abgleich möglich
-  const vorrat = LS.get('ff_vorrat', []);
-  const eintrag = vorrat.find(v => v.title.toLowerCase() === zutat.title.toLowerCase());
-  if (!eintrag || eintrag.menge === null) return false;
-  const verfuegbar = rechneUm(eintrag.menge, eintrag.einheit, zutat.einheit);
-  return verfuegbar !== null && verfuegbar >= zutat.menge;
+  return verfuegbareVorratMenge(zutat.title, zutat.einheit) >= zutat.menge;
 }
 
 // Zieht die verbrauchte Menge vom Vorrat ab (z.B. wenn eine Mahlzeit als
@@ -6627,15 +6942,146 @@ function verbraucheAusVorrat(titel, menge, einheit) {
     return;
   }
 
+  // Menge GENAU EINMAL abziehen: zuerst von der Position mit dem frühesten
+  // MHD (bzw. der ältesten); reicht diese nicht, geht der Rest auf die nächste.
+  let rest = menge; // in der Einheit des Rezepts
+  const neueMengen = {};
+  for (const v of vorratPositionenFuer(titel)) {
+    if (rest <= 0) break;
+    if (v.menge === null || v.menge === undefined || v.menge <= 0) continue;
+    const verfuegbar = rechneUm(v.menge, v.einheit, einheit); // z.B. 1 kg -> 1000 g
+    if (verfuegbar === null) continue;                        // nicht umrechenbar
+    const nimm = Math.min(rest, verfuegbar);
+    neueMengen[v.id] = Math.max(0, runde3(v.menge - rechneUm(nimm, einheit, v.einheit)));
+    rest = runde3(rest - nimm);
+  }
+  if (!Object.keys(neueMengen).length) return;
+  LS.set('ff_vorrat', LS.get('ff_vorrat', []).map(v =>
+    Object.prototype.hasOwnProperty.call(neueMengen, v.id) ? { ...v, menge: neueMengen[v.id] } : v));
+  pruefeNachschub(titel);
+}
+
+// ── NACHSCHUB ZWISCHEN LAGERORTEN ─────────────────────────────
+// Paare "Reserve -> Entnahme" (z.B. Gefrierschrank Keller -> Gefrierschrank).
+// Ist ein Artikel am Entnahme-Ort aufgebraucht (Menge 0) und liegt er noch
+// am Reserve-Ort, wird eine Packung (bzw. die ganze Position) umgebucht und
+// die Aufgabe "… aus … holen" angelegt.
+function getLagerortPaare() {
+  return LS.get('ff_lagerort_paare', [{ reserve: 'Gefrierschrank Keller', entnahme: 'Gefrierschrank' }]);
+}
+function istReserveOrt(lagerort) {
+  const k = normKey(lagerort);
+  return !!k && getLagerortPaare().some(p => normKey(p.reserve) === k);
+}
+
+function pruefeNachschub(titel) {
+  const key = normKey(titel);
+  for (const paar of getLagerortPaare()) {
+    const vorrat = LS.get('ff_vorrat', []);
+    const amOrt = (v, ort) => normKey(v.title) === key && normKey(v.lagerort) === normKey(ort);
+    const entnahme = vorrat.filter(v => amOrt(v, paar.entnahme));
+    // Nur wenn der Artikel am Entnahme-Ort geführt wird und dort leer ist
+    if (!entnahme.length) continue;
+    if (entnahme.some(v => v.menge === null || v.menge === undefined || v.menge > 0)) continue;
+
+    // Reserve-Position in Verbrauchsreihenfolge (MHD, dann Anlegedatum)
+    const reserve = vorratPositionenFuer(titel).find(v => amOrt(v, paar.reserve) && v.menge > 0);
+    if (!reserve) continue;
+
+    const leereIds = new Set(entnahme.map(v => v.id));
+    const packung = reserve.einzelmenge > 0 && reserve.menge > reserve.einzelmenge;
+    let neu;
+    if (packung) {
+      // Eine Packung abspalten und nach oben buchen
+      const oben = {
+        ...reserve,
+        id: 'vr_' + uid(),
+        lagerort: paar.entnahme,
+        menge: reserve.einzelmenge,
+        anzahl: 1,
+        notiz: '',                              // Fach gilt für den Reserve-Ort
+        erstelltAm: new Date().toISOString(),
+      };
+      neu = vorrat
+        .filter(v => !leereIds.has(v.id))
+        .map(v => v.id === reserve.id ? {
+          ...v,
+          menge: runde3(v.menge - v.einzelmenge),
+          anzahl: v.anzahl ? Math.max(0, v.anzahl - 1) : v.anzahl,
+        } : v);
+      neu.push(oben);
+    } else {
+      // Keine Packungsgröße bzw. letzte Packung: ganze Position umbuchen
+      neu = vorrat
+        .filter(v => !leereIds.has(v.id))
+        .map(v => v.id === reserve.id ? { ...v, lagerort: paar.entnahme, notiz: '' } : v);
+    }
+    LS.set('ff_vorrat', neu);
+    legeNachschubAufgabeAn(reserve.title, paar);
+    showToast(`${reserve.title}: ${packung ? '1 Packung' : 'Bestand'} von ${paar.reserve} nach ${paar.entnahme} umgebucht`, 5000);
+  }
+}
+
+// ── TIEFGEFRORENES GERICHT ENTNEHMEN ──────────────────────────
+// Nimmt 1 Portion des Gerichts aus einem Gefrierort: mit Packungsgröße eine
+// Packung, sonst Menge -1. Reihenfolge wie beim Abziehen (MHD, Gefrierschrank
+// vor Keller, älteste zuerst). Ist das Gericht danach aufgebraucht, wird
+// ggf. aus der Reserve nachgebucht; leere Zeilen werden entfernt (ein
+// Gericht kauft man nicht nach). Name in Trello und Vorrat muss übereinstimmen.
+function entnehmeTiefkuehlgericht(entry) {
   const vorrat = LS.get('ff_vorrat', []);
-  const updated = vorrat.map(v => {
-    if (v.title.toLowerCase() !== titel.toLowerCase()) return v;
-    if (v.menge === null) return v;
-    const abzug = rechneUm(menge, einheit, v.einheit); // z.B. 190 g von 1 kg
-    if (abzug === null) return v;                       // nicht umrechenbar
-    return { ...v, menge: Math.max(0, runde3(v.menge - abzug)) };
-  });
-  LS.set('ff_vorrat', updated);
+  const verfuegbar = v => v && (v.menge === null || v.menge === undefined || v.menge > 0);
+
+  // Per Vorschlag eingeplant: genau diese Position, sonst nach Name in Gefrierorten
+  let pos = entry.kuehltrucheId ? vorrat.find(v => v.id === entry.kuehltrucheId) : null;
+  if (!verfuegbar(pos)) {
+    pos = vorratPositionenFuer(entry.title).find(v => istGefrierschrank(v.lagerort) && verfuegbar(v));
+  }
+  if (!pos) {
+    return { geaendert: false, meldung: `Gegessen ✓ – „${entry.title}" nicht im Gefrierschrank gefunden, Vorrat unverändert.` };
+  }
+
+  const portion = pos.einzelmenge > 0 ? pos.einzelmenge : 1;
+  const neueMenge = (pos.menge === null || pos.menge === undefined) ? 0 : Math.max(0, runde3(pos.menge - portion));
+  const neueAnzahl = pos.anzahl ? Math.max(0, pos.anzahl - 1) : pos.anzahl;
+  LS.set('ff_vorrat', vorrat.map(v => v.id === pos.id ? { ...v, menge: neueMenge, anzahl: neueAnzahl } : v));
+
+  // Am Entnahme-Ort leer -> aus der Reserve nachbuchen (Gefrierschrank Keller)
+  const aufgabenVorher = state.aufgaben.length;
+  pruefeNachschub(pos.title);
+  const nachgebucht = state.aufgaben.length > aufgabenVorher;
+
+  // Übrige leere Zeilen dieses Gerichts in Gefrierorten entfernen
+  const key = normKey(pos.title);
+  LS.set('ff_vorrat', LS.get('ff_vorrat', []).filter(v =>
+    !(normKey(v.title) === key && istGefrierschrank(v.lagerort) && v.menge !== null && v.menge !== undefined && v.menge <= 0)));
+
+  const einheitWort = pos.einzelmenge > 0 ? 'Packung' : 'Portion';
+  const rest = LS.get('ff_vorrat', [])
+    .filter(v => normKey(v.title) === key && istGefrierschrank(v.lagerort))
+    .reduce((s, v) => s + (v.einzelmenge > 0 ? Math.round(v.menge / v.einzelmenge) : (v.menge || 0)), 0);
+  const restText = rest > 0 ? ` – noch ${rest} ${rest === 1 ? einheitWort : einheitWort + (einheitWort === 'Packung' ? 'en' : 'en')}` : '';
+  return {
+    geaendert: true,
+    meldung: rest > 0
+      ? `Gegessen ✓ – 1 ${einheitWort} „${pos.title}" aus ${pos.lagerort} entnommen${restText}${nachgebucht ? ' (Nachschub aus dem Keller umgebucht)' : ''}.`
+      : `Gegessen ✓ – „${pos.title}" ist jetzt aufgebraucht.`,
+  };
+}
+
+// Aufgabe "… aus … holen" (nur einmal, solange sie offen ist)
+function legeNachschubAufgabeAn(titel, paar) {
+  const text = `❄️ ${titel} aus ${paar.reserve} holen`;
+  if (state.aufgaben.some(a => !a.done && a.title === text)) return;
+  save('aufgaben', [...state.aufgaben, {
+    id: 'nachschub_' + uid(),
+    title: text,
+    subtitle: `nach ${paar.entnahme} bringen`,
+    duration: 0,
+    done: false,
+    date: today(),
+    source: 'nachschub',
+  }]);
 }
 
 // Rechnet einen (bereits zu Wochenbedarf summierten) Zutaten-Bedarf gegen
@@ -6664,11 +7110,9 @@ function berechneVorratAbgleich(bedarfProZutatMap) {
       return;
     }
 
-    const vorrat = LS.get('ff_vorrat', []);
-    const eintrag = vorrat.find(v => v.title.toLowerCase() === z.title.toLowerCase());
-    const vorratMenge = (eintrag && eintrag.menge !== null)
-      ? (rechneUm(eintrag.menge, eintrag.einheit, z.einheit) ?? 0)   // 1 kg Vorrat deckt 500 g Bedarf
-      : 0;
+    // Alle Positionen des Artikels zusammen (z.B. 2× Mandeln mit verschiedenem MHD),
+    // umgerechnet in die Einheit des Bedarfs (1 kg Vorrat deckt 500 g Bedarf)
+    const vorratMenge = verfuegbareVorratMenge(z.title, z.einheit);
 
     const rest = runde3(z.menge - vorratMenge);
     if (rest > 0) {
@@ -6924,7 +7368,7 @@ function getKuehltrucheAlsVorschlagKandidaten(usedTitles) {
 
 function istGefrierschrank(lagerort) {
   const l = (lagerort || '').trim().toLowerCase();
-  return l === 'gefrierschrank' || l === 'kühltruhe' || l === 'tiefkühler';
+  return l.startsWith('gefrierschrank') || l.startsWith('kühltruhe') || l.startsWith('tiefkühl');
 }
 
 // Findet ein Gericht aus dem Pool, das eine bald ablaufende Vorratszutat
