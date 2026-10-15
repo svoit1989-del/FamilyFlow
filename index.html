@@ -3398,7 +3398,7 @@ function renderEssenView() {
         // damit beim Klick auf entry.zutaten/poolId/kuehltrucheId zugegriffen
         // werden kann, unabhängig davon ob es ein Pool-Gericht oder eine
         // normale Wochentags-Karte ist.
-        const gegessenBtn = !entry.gegessen
+        const gegessenBtn = !istGegessen(d, mt.key, entry)
           ? `<button class="gegessen-btn" data-day="${d}" data-slot="${mt.key}" data-idx="${idx}" title="Als gegessen markieren">✓</button>`
           : `<span class="gegessen-erledigt">✓✓</span>`;
         const icon = idx === 0
@@ -3423,7 +3423,7 @@ function renderEssenView() {
     const sonstigeZeilen = sonstigeEntries.map((entry, idx) => {
       const tagBadges = (entry.tags || []).map(t =>
         `<span class="essen-tag" style="margin-left:6px;">${t}</span>`).join('');
-      const gegessenBtn = !entry.gegessen
+      const gegessenBtn = !istGegessen(d, 'sonstige', entry)
         ? `<button class="gegessen-btn" data-day="${d}" data-slot="sonstige" data-idx="${idx}" title="Als gegessen markieren">✓</button>`
         : `<span class="gegessen-erledigt">✓✓</span>`;
       const icon = idx === 0
@@ -3458,7 +3458,7 @@ function renderEssenView() {
   // entfernt einen ggf. verknüpften Kühltruhe-Eintrag (Reste sind dann weg),
   // UND zieht die verwendeten Zutaten vom Vorrat ab (falls dort vorhanden).
   document.querySelectorAll('.gegessen-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       try {
         const { day, slot, idx } = btn.dataset;
         const essenWoche = { ...state.essenWoche };
@@ -3467,6 +3467,33 @@ function renderEssenView() {
         const slotArr = Array.isArray(tagPlan[slot]) ? [...tagPlan[slot]] : [];
         const entry = slotArr[idx];
         if (!entry) { showToast('Fehler: Eintrag nicht gefunden.'); return; }
+
+        // Doppeltes Abziehen verhindern -- auch wenn die andere Person die
+        // Mahlzeit auf ihrem Gerät schon abgehakt hat: kurz das Sheet fragen.
+        btn.disabled = true;
+        await ladeGegessenVonSheets().catch(() => {});
+        if (istGegessen(day, slot, entry)) {
+          showToast('Schon als gegessen markiert – nichts abgezogen.', 4000);
+          renderEssenView();
+          return;
+        }
+
+        // Vergangener Tag: evtl. wurde schon abgezogen (z.B. Haken vor dem
+        // Update verloren) -> wahlweise nur als gegessen markieren
+        let nurMarkieren = false;
+        if (datumVonWochentag(day) < today()) {
+          nurMarkieren = !confirm(`„${entry.title}" (${day}) nachträglich abhaken.\n\nOK = Vorrat abziehen\nAbbrechen = nur als gegessen markieren (Vorrat wurde schon abgezogen)`);
+        }
+        if (nurMarkieren) {
+          markiereGegessen(day, slot, entry);
+          slotArr[idx] = { ...entry, gegessen: true };
+          tagPlan[slot] = slotArr;
+          essenWoche[day] = tagPlan;
+          save('essenWoche', essenWoche);
+          showToast('Als gegessen markiert – Vorrat unverändert ✓');
+          renderEssenView();
+          return;
+        }
 
         // Zutaten abziehen: bevorzugt die am Eintrag selbst gespeicherten
         // (funktioniert für JEDE Karte, auch ohne Pool-Bezug), sonst als
@@ -3506,6 +3533,7 @@ function renderEssenView() {
         if (vorratGeaendert) schreibeVorratZuSheets();
 
         // Als erledigt markieren -- persistent, bleibt nach Reload erhalten
+        markiereGegessen(day, slot, entry);            // eigener Speicher + Sheet
         slotArr[idx] = { ...entry, gegessen: true };
         tagPlan[slot] = slotArr;
         essenWoche[day] = tagPlan;
@@ -6325,9 +6353,21 @@ function merkeSheetsFehler(bereich, text) {
   renderConnectionsSicher();
 }
 
-async function ermittleTabName(spreadsheetId, bevorzugt) {
+// Gleichzeitige Anfragen für denselben Tab teilen sich EIN Ergebnis (sonst
+// könnten zwei Aufrufe denselben neuen Tab doppelt anlegen wollen).
+const _tabNameLaeuft = {};
+function ermittleTabName(spreadsheetId, bevorzugt) {
   const cacheKey = spreadsheetId + '|' + bevorzugt;
-  if (_tabNameCache[cacheKey]) return _tabNameCache[cacheKey];
+  if (_tabNameCache[cacheKey]) return Promise.resolve(_tabNameCache[cacheKey]);
+  if (!_tabNameLaeuft[cacheKey]) {
+    _tabNameLaeuft[cacheKey] = ermittleTabNameIntern(spreadsheetId, bevorzugt)
+      .finally(() => { delete _tabNameLaeuft[cacheKey]; });
+  }
+  return _tabNameLaeuft[cacheKey];
+}
+
+async function ermittleTabNameIntern(spreadsheetId, bevorzugt) {
+  const cacheKey = spreadsheetId + '|' + bevorzugt;
 
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${googleAccessToken.token}` } });
@@ -6354,7 +6394,7 @@ async function ermittleTabName(spreadsheetId, bevorzugt) {
   return rueckfall;
 }
 
-const TABS_NUR_EXAKT = ['Regeln'];
+const TABS_NUR_EXAKT = ['Regeln', 'Gegessen'];
 
 async function legeSheetTabAn(spreadsheetId, titel) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
@@ -6495,7 +6535,7 @@ function setzeBrotvorrat(neu, { schreiben = true } = {}) {
 // Zeitstempel), bis das Sheet sie bestätigt hat. Beim Laden gewinnen
 // nicht übertragene lokale Änderungen -> sie werden ins Sheet geschrieben
 // statt vom (älteren) Sheet-Stand überschrieben zu werden.
-const SYNC_LABEL = { vorrat: 'Vorrat', wartung: 'Wartung', regeln: 'Regeln' };
+const SYNC_LABEL = { vorrat: 'Vorrat', wartung: 'Wartung', regeln: 'Regeln', gegessen: 'Gegessen' };
 function getSyncOffen() { return LS.get('ff_sync_offen', {}); }
 function markiereSyncOffen(bereich) {
   const o = getSyncOffen();
@@ -6697,7 +6737,7 @@ async function schreibeRegelnZuSheets() {
 async function syncSheets() {
   if (!isSheetsConnected()) return;
   const jobs = [];
-  if (isSheetsConnected('vorrat'))  jobs.push(ladeVorratVonSheets());
+  if (isSheetsConnected('vorrat'))  jobs.push(ladeVorratVonSheets(), ladeGegessenVonSheets());
   if (isSheetsConnected('wartung')) {
     // Wartung zuerst, danach Regeln (legt ggf. den Tab "Regeln" an)
     jobs.push(ladeWartungVonSheets().then(ladeRegelnVonSheets));
@@ -7019,6 +7059,139 @@ function pruefeNachschub(titel) {
     LS.set('ff_vorrat', neu);
     legeNachschubAufgabeAn(reserve.title, paar);
     showToast(`${reserve.title}: ${packung ? '1 Packung' : 'Bestand'} von ${paar.reserve} nach ${paar.entnahme} umgebucht`, 5000);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── GEGESSEN-STATUS (unabhängig vom Essensplan) ───────────────
+// ══════════════════════════════════════════════════════════════
+// Der Essensplan wird bei jedem Trello-Sync neu aufgebaut -- ein Haken am
+// Eintrag selbst ging dabei verloren und erlaubte doppeltes Abziehen.
+// Deshalb eigener Speicher: Schlüssel = konkretes Datum + Eintrag-ID.
+// Geteilt über den Tab "Gegessen" im Vorrat-Sheet; dort wird NUR ANGEHÄNGT
+// (nie überschrieben), damit zwei Geräte sich nichts löschen können.
+const GEGESSEN_TAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+const GEGESSEN_SPALTEN = ['Schlüssel', 'Datum', 'Gericht', 'Person', 'Zeitpunkt'];
+const GEGESSEN_AUFBEWAHREN_TAGE = 21;
+
+// Datum des Wochentags in der aktuell angezeigten Woche
+function datumVonWochentag(tagName) {
+  const d = new Date(getMondayOfCurrentWeek());
+  d.setDate(d.getDate() + Math.max(0, GEGESSEN_TAGE.indexOf(tagName)));
+  return toLocalDateStr(d);
+}
+// Datum im Schlüssel: dieselbe Trello-Karte nächste Woche gilt wieder als offen
+function gegessenKey(tagName, slot, entry) {
+  return datumVonWochentag(tagName) + '|' + (entry.id || (slot + ':' + normKey(entry.title)));
+}
+function getGegessen() { return LS.get('ff_gegessen', {}); }
+
+function istGegessen(tagName, slot, entry) {
+  const key = gegessenKey(tagName, slot, entry);
+  const alle = getGegessen();
+  if (alle[key]) return true;
+  // Übernahme alter Haken, die noch direkt am Eintrag hängen
+  if (entry.gegessen) { alle[key] = { gericht: entry.title, datum: key.split('|')[0], person: '', am: new Date().toISOString() }; LS.set('ff_gegessen', alle); return true; }
+  return false;
+}
+
+function markiereGegessen(tagName, slot, entry) {
+  const key = gegessenKey(tagName, slot, entry);
+  const alle = getGegessen();
+  alle[key] = {
+    gericht: entry.title,
+    datum: key.split('|')[0],
+    person: personInfo(getHauptnutzer()).name,
+    am: new Date().toISOString(),
+  };
+  // Alte Einträge aufräumen
+  const grenze = datumPlusTage(today(), -GEGESSEN_AUFBEWAHREN_TAGE);
+  Object.keys(alle).forEach(k => { if (k.split('|')[0] < grenze) delete alle[k]; });
+  LS.set('ff_gegessen', alle);
+
+  // In die Warteschlange und ans Sheet anhängen
+  const queue = LS.get('ff_gegessen_offen', []);
+  if (!queue.includes(key)) queue.push(key);
+  LS.set('ff_gegessen_offen', queue);
+  sendeGegessenWarteschlange();
+}
+
+// Hängt alle noch nicht übertragenen Haken an den Tab "Gegessen" an.
+// Erst nach Bestätigung durch Google werden sie aus der Warteschlange entfernt.
+let _gegessenSendetGerade = null;
+function sendeGegessenWarteschlange() {
+  if (_gegessenSendetGerade) return _gegessenSendetGerade;
+  _gegessenSendetGerade = (async () => {
+    const queue = LS.get('ff_gegessen_offen', []);
+    if (!queue.length || !getSheetId('vorrat')) { aktualisiereGegessenStatus(); return; }
+    aktualisiereGegessenStatus();
+    if (!(await stelleGoogleTokenSicher())) return;
+    try {
+      const id = getSheetId('vorrat');
+      const tab = await ermittleTabName(id, 'Gegessen');
+      const alle = getGegessen();
+      const zeilen = queue.filter(k => alle[k]).map(k => [k, alle[k].datum, alle[k].gericht, alle[k].person || '', alle[k].am]);
+      if (zeilen.length) {
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(a1(tab, 'A1'))}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${googleAccessToken.token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: zeilen }),
+        });
+        await pruefeSheetsAntwort(res);
+      }
+      // Nur die gesendeten Schlüssel entfernen (zwischenzeitlich neue bleiben)
+      const gesendet = new Set(queue);
+      LS.set('ff_gegessen_offen', LS.get('ff_gegessen_offen', []).filter(k => !gesendet.has(k)));
+      merkeSheetsFehler('gegessen', null);
+    } catch (err) {
+      console.error('Gegessen ins Sheet schreiben fehlgeschlagen:', err);
+      merkeSheetsFehler('gegessen', err.message);
+    } finally {
+      aktualisiereGegessenStatus();
+    }
+  })().finally(() => { _gegessenSendetGerade = null; });
+  return _gegessenSendetGerade;
+}
+
+// Offene Haken im Sync-Status unter Familie anzeigen
+function aktualisiereGegessenStatus() {
+  const o = getSyncOffen();
+  if (LS.get('ff_gegessen_offen', []).length) o.gegessen = o.gegessen || Date.now();
+  else delete o.gegessen;
+  LS.set('ff_sync_offen', o);
+  renderConnectionsSicher();
+}
+
+// Haken beider Personen aus dem Sheet holen und mit dem lokalen Stand
+// zusammenführen (Vereinigung -- ein Haken wird nie wieder entfernt).
+async function ladeGegessenVonSheets() {
+  if (!isSheetsConnected('vorrat')) return;
+  try {
+    const rows = await ladeSheetTab('vorrat', 'Gegessen');
+    if (rows === null) return;
+    if (!rows.length) {
+      // neuer Tab: Kopfzeile anlegen
+      const id = getSheetId('vorrat');
+      const tab = await ermittleTabName(id, 'Gegessen');
+      const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(a1(tab, 'A1'))}?valueInputOption=RAW`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${googleAccessToken.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [GEGESSEN_SPALTEN] }),
+      });
+      await pruefeSheetsAntwort(res);
+    }
+    const alle = getGegessen();
+    rows.forEach(([key, datum, gericht, person, am]) => {
+      if (!key || key === GEGESSEN_SPALTEN[0] || alle[key]) return;
+      alle[key] = { datum: datum || String(key).split('|')[0], gericht: gericht || '', person: person || '', am: am || '' };
+    });
+    LS.set('ff_gegessen', alle);
+    merkeSheetsFehler('gegessen', null);
+    await sendeGegessenWarteschlange(); // eigene offene Haken nachreichen
+  } catch (err) {
+    console.error('Gegessen von Sheets laden fehlgeschlagen:', err);
+    merkeSheetsFehler('gegessen', err.message);
   }
 }
 
