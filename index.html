@@ -884,6 +884,33 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   font-size: 0.7rem; font-weight: 700; color: var(--green);
   background: #fff; border-radius: 99px; padding: 2px 8px;
 }
+.einkauf-item.aufklappbar { flex-wrap: wrap; }
+.einkauf-item.aufklappbar .einkauf-item-body { cursor: pointer; }
+.einkauf-pfeil {
+  margin-left: auto; padding: 4px 6px; color: var(--muted); font-size: 0.85rem;
+  cursor: pointer; transition: transform 0.15s;
+}
+.einkauf-item.offen .einkauf-pfeil { transform: rotate(180deg); }
+.einkauf-details {
+  flex-basis: 100%;
+  margin: 8px 0 2px 34px;
+  padding: 8px 10px;
+  background: var(--cream);
+  border-radius: var(--radius-sm);
+}
+.einkauf-herkunft {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 0.8rem; color: var(--ink); padding: 3px 0;
+}
+.einkauf-herkunft.gegessen { color: var(--muted); text-decoration: line-through; }
+.einkauf-tag {
+  display: inline-block; font-size: 0.66rem; font-weight: 700; color: var(--muted);
+  background: #fff; border-radius: 99px; padding: 0 6px; margin-left: 4px;
+}
+.einkauf-bilanz {
+  font-size: 0.75rem; color: var(--muted);
+  border-top: 1px solid var(--cream-dim); margin-top: 6px; padding-top: 6px;
+}
 .einkauf-fuer {
   font-size: 0.72rem;
   color: var(--muted);
@@ -3686,17 +3713,28 @@ function renderEinkauf() {
           <div class="einkauf-kat-header">${k}</div>
           <div>
             ${items.map(item => `
-              <div class="einkauf-item" data-eid="${item.id}">
+              <div class="einkauf-item${einkaufDetailsHtml(item) ? ' aufklappbar' : ''}${_einkaufOffen.has(item.id) ? ' offen' : ''}" data-eid="${item.id}">
                 <div class="einkauf-cb" data-eid="${item.id}"></div>
-                <div class="einkauf-item-body">
+                <div class="einkauf-item-body" data-toggle="${item.id}">
                   <span class="einkauf-item-title">${item.title}</span>
                   ${mengeStrFor(item)}
                   ${item.fuer ? `<span class="einkauf-fuer">für: ${item.fuer}</span>` : ''}
                 </div>
+                ${einkaufDetailsHtml(item) ? `<span class="einkauf-pfeil" data-toggle="${item.id}">▾</span>` : ''}
+                ${_einkaufOffen.has(item.id) ? einkaufDetailsHtml(item) : ''}
               </div>`).join('')}
           </div>
         </div>`;
     }).join('');
+
+  // Name/Pfeil antippen: Herkunft auf-/zuklappen
+  wrap.querySelectorAll('.einkauf-item.aufklappbar [data-toggle]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.toggle;
+      if (_einkaufOffen.has(id)) _einkaufOffen.delete(id); else _einkaufOffen.add(id);
+      renderEinkauf();
+    });
+  });
 
   // Checkbox-Klick: Artikel SOFORT nach "Erledigt" verschieben
   wrap.querySelectorAll('.einkauf-cb').forEach(el => {
@@ -3711,6 +3749,42 @@ function renderEinkauf() {
   });
 
   renderEinkaufErledigt();
+}
+
+// Aufgeklappte Einträge (bleiben beim Neuzeichnen offen)
+const _einkaufOffen = new Set();
+
+// Inhalt beim Aufklappen: Gerichte mit Tag und Menge, bereits gegessene
+// markiert; darunter Bedarf, Vorrat und Restmenge. '' = nichts aufzuklappen.
+function einkaufDetailsHtml(item) {
+  const herkunft = item.herkunft || [];
+  if (!herkunft.length) {
+    return item.source === 'material' && item.fuer
+      ? `<div class="einkauf-details"><div class="einkauf-herkunft">🧽 benötigt für: ${escAttr(item.fuer)}</div>
+         <div class="einkauf-bilanz">Fehlt im Vorrat</div></div>`
+      : '';
+  }
+  const reihenfolge = t => { const i = GEGESSEN_TAGE.indexOf(t); return i < 0 ? 9 : i; };
+  const zeilen = herkunft.slice()
+    .sort((a, b) => reihenfolge(a.tag) - reihenfolge(b.tag))
+    .map(h => {
+      const gegessen = h.entryId && GEGESSEN_TAGE.includes(h.tag)
+        && istGegessen(h.tag, '', { id: h.entryId, title: h.gericht });
+      const menge = h.menge !== null && h.menge !== undefined ? formatMenge(h.menge, h.einheit) : '';
+      return `<div class="einkauf-herkunft${gegessen ? ' gegessen' : ''}">
+        <span>${escAttr(h.gericht)} <span class="einkauf-tag">${escAttr((h.tag || '').slice(0, 2))}</span></span>
+        <span>${menge}${gegessen ? ' · ✓ gegessen' : ''}</span>
+      </div>`;
+    }).join('');
+
+  let bilanz = '';
+  if (item.bedarf !== null && item.bedarf !== undefined && item.menge !== null && item.menge !== undefined) {
+    const imVorrat = runde3(item.bedarf - item.menge);
+    bilanz = `<div class="einkauf-bilanz">Bedarf ${formatMenge(item.bedarf, item.einheit)}`
+      + (imVorrat > 0 ? ` · im Vorrat ${formatMenge(imVorrat, item.einheit)}` : ' · nichts im Vorrat')
+      + ` · <b>zu kaufen ${formatMenge(item.menge, item.einheit)}</b></div>`;
+  }
+  return `<div class="einkauf-details">${zeilen}${bilanz}</div>`;
 }
 
 function renderEinkaufErledigt() {
@@ -7279,7 +7353,7 @@ function berechneVorratAbgleich(bedarfProZutatMap) {
       const brotStatus = checkBrotvorratKnapp();
       const brotBestand = brotStatus ? Math.max(0, brotStatus.bestandJetzt) : 0;
       const rest = Math.round((z.menge - brotBestand) * 100) / 100;
-      if (rest > 0) nachVorratAbgleich.push({ ...z, menge: rest });
+      if (rest > 0) nachVorratAbgleich.push({ ...z, bedarf: z.menge, menge: rest });
       return;
     }
 
@@ -7289,7 +7363,7 @@ function berechneVorratAbgleich(bedarfProZutatMap) {
 
     const rest = runde3(z.menge - vorratMenge);
     if (rest > 0) {
-      nachVorratAbgleich.push({ ...z, menge: rest }); // nur die Restmenge einkaufen
+      nachVorratAbgleich.push({ ...z, bedarf: z.menge, menge: rest }); // nur die Restmenge einkaufen
     }
     // rest <= 0 -> Vorrat deckt den gesamten Wochenbedarf, nichts einkaufen
   });
@@ -7312,8 +7386,9 @@ function aktualisiereEinkaufslisteGegenVorrat() {
     if (bedarfProZutat.has(key)) {
       const e = bedarfProZutat.get(key);
       e.menge = (z.menge !== null && e.menge !== null) ? runde3(e.menge + z.menge) : null;
+      e.herkunft = [...(e.herkunft || []), ...(z.herkunft || [])];
     } else {
-      bedarfProZutat.set(key, z);
+      bedarfProZutat.set(key, { ...z, herkunft: [...(z.herkunft || [])] });
     }
   });
 
@@ -7330,6 +7405,7 @@ function aktualisiereEinkaufslisteGegenVorrat() {
     id: 'tr_' + uid(), title: i.title,
     menge: i.menge ?? null, einheit: i.einheit ?? null,
     kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
+    herkunft: i.herkunft || [], bedarf: i.bedarf ?? null,
   }));
   save('einkauf', dedupeEinkauf([...behalten, ...neueItems]));
   aktualisiereMaterialEinkauf();
@@ -7408,7 +7484,11 @@ async function syncTrello() {
               // Rohe Zutat weiterhin für den Wochenbedarf sammeln, außer bei
               // "tiefgefroren" (siehe Kommentar oben) -- der Vorrat-Abgleich
               // passiert erst NACHDEM alle Wochentage durchlaufen sind.
-              if (!istTiefgefroren) einkaufNeu.push({ ...zutat, source: 'rezept' });
+              if (!istTiefgefroren) einkaufNeu.push({
+                ...zutat, source: 'rezept',
+                // aus welchem Gericht/Tag stammt der Bedarf (für das Aufklappen)
+                herkunft: [{ gericht: card.name, tag: list.name, entryId: 'wp_' + card.id, menge: zutat.menge, einheit: zutat.einheit }],
+              });
             }
           });
         }
@@ -7452,8 +7532,9 @@ async function syncTrello() {
         const e = bedarfProZutat.get(key);
         if (z.menge !== null && e.menge !== null) e.menge = runde3(e.menge + z.menge);
         else e.menge = null; // eine der Mengen unbekannt -> Summe unsicher, kein Abgleich
+        e.herkunft = [...(e.herkunft || []), ...(z.herkunft || [])];
       } else {
-        bedarfProZutat.set(key, { ...z });
+        bedarfProZutat.set(key, { ...z, herkunft: [...(z.herkunft || [])] });
       }
     });
 
@@ -7475,6 +7556,7 @@ async function syncTrello() {
       id: 'tr_' + uid(), title: i.title,
       menge: i.menge ?? null, einheit: i.einheit ?? null,
       kategorie: guessKategorie(i.title), checked: false, source: 'rezept',
+      herkunft: i.herkunft || [], bedarf: i.bedarf ?? null,
     }));
     save('einkauf', dedupeEinkauf([...behalten, ...neueItems]));
     aktualisiereMaterialEinkauf();
@@ -7719,6 +7801,7 @@ function dedupeEinkauf(items) {
     if (map.has(key)) {
       const existing = map.get(key);
       existing.count = (existing.count || 1) + 1;
+      if (i.herkunft?.length) existing.herkunft = [...(existing.herkunft || []), ...i.herkunft];
       const passend = (i.menge !== null && existing.menge !== null)
         ? rechneUm(i.menge, i.einheit, existing.einheit) : null;
       if (passend !== null) {
