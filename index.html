@@ -1063,6 +1063,16 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
 .person-chip.neu { color: var(--muted); border-style: dashed; }
 .arbeit-toggle.aktiv { background: var(--forest); border-color: var(--forest); color: var(--cream); }
 .connect-status.sync-warnung { color: var(--status-mid); font-weight: 700; }
+.umlagern-btn {
+  display: block; width: 100%; margin: -4px 0 12px; padding: 10px;
+  border-radius: var(--radius-sm); border: 1.5px dashed var(--green);
+  background: transparent; color: var(--green); font-size: 0.88rem; font-weight: 700;
+}
+.umlagern-bereich {
+  background: var(--cream); border-radius: var(--radius-sm);
+  padding: 10px 12px; margin-bottom: 14px;
+}
+.umlagern-quelle { font-size: 0.85rem; font-weight: 700; color: var(--forest); margin-bottom: 6px; }
 .paar-zeile { display: flex; align-items: center; gap: 8px; background: var(--cream);
   border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 6px; }
 .paar-text { flex: 1; font-size: 0.85rem; color: var(--ink); }
@@ -1896,6 +1906,23 @@ select.modal-input { background: #fff; }
     <div class="modal-overlay" id="vorratModal">
       <div class="modal-box">
         <div class="modal-title" id="vorratModalTitel">Artikel anlegen</div>
+        <button type="button" class="umlagern-btn" id="vmUmlagernBtn" style="display:none;">↪ Umlagern?</button>
+        <div class="umlagern-bereich" id="vmUmlagernBereich" style="display:none;">
+          <div class="umlagern-quelle" id="vmUmlagernQuelle"></div>
+          <label class="modal-label">Nach Lagerort</label>
+          <input class="modal-input" id="vmZielOrt" autocomplete="off" placeholder="z.B. Gefrierschrank" />
+          <div class="vorschlag-chips" id="vmZielOrtChips"></div>
+          <label class="modal-label">Menge umlagern (<span id="vmUmlagernEinheit"></span>)</label>
+          <input class="modal-input" id="vmUmlagernMenge" type="number" step="any" min="0" />
+          <div class="vorschlag-chips" id="vmUmlagernSchnell"></div>
+          <label class="modal-label">Fach am Ziel (optional)</label>
+          <input class="modal-input" id="vmZielFach" autocomplete="off" placeholder="z.B. Fach 2" />
+          <div class="vorschlag-chips" id="vmZielFachChips"></div>
+          <div class="modal-actions" style="margin-top:6px;">
+            <button type="button" class="modal-btn secondary" id="vmUmlagernAbbrechen">Zurück</button>
+            <button type="button" class="modal-btn primary" id="vmUmlagernOk">Umlagern</button>
+          </div>
+        </div>
         <label class="modal-label">Artikel</label>
         <input class="modal-input" id="vmArtikel" autocomplete="off" placeholder="z.B. Haferflocken" />
         <div class="vorschlag-chips" id="vmArtikelChips"></div>
@@ -3194,6 +3221,7 @@ function renderAufgaben() {
   // Folgeaufgaben aus Regeln einfügen (z.B. "Wäsche abnehmen" nach
   // "Wäsche waschen" gestern)
   heutigeAufgaben.push(...getFolgeaufgabenFuerHeute());
+  heutigeAufgaben.push(...getAuftauAufgaben());
 
   // Fällige/überfällige Wartungen als virtuelle Aufgaben einblenden
   getWartungMitStatus()
@@ -3532,21 +3560,27 @@ function renderEssenView() {
         // aus dem Gefrierschrank eingeplant): das Gericht ist schon gekocht ->
         // KEINE Rezept-Zutaten abziehen, sondern 1 Portion des Gerichts selbst.
         const istTiefgefroren = (entry.tags || []).some(t => String(t).toLowerCase() === 'tiefgefroren');
-        if (istTiefgefroren || entry.kuehltrucheId) {
-          const ergebnis = entnehmeTiefkuehlgericht(entry);
+        let zutatenListe = entry.zutaten;
+        if (!zutatenListe?.length && entry.poolId) {
+          const pool = LS.get('ff_gerichtPool', []);
+          zutatenListe = pool.find(g => g.id === entry.poolId)?.zutaten;
+        }
+        const ohneRezept = !zutatenListe?.length;
+        let meldungGezeigt = false;
+
+        if (istTiefgefroren || entry.kuehltrucheId || ohneRezept) {
+          // Tiefgefroren: schon gekocht -> keine Zutaten, sondern das Gericht.
+          // Ohne Rezept (z.B. "Abendessen Ofenkäse mit Gemüsesticks"): den
+          // Vorrat-Artikel suchen, dessen Name im Gerichtsnamen steckt.
+          const ergebnis = entnehmeGerichtAusVorrat(entry);
           vorratGeaendert = ergebnis.geaendert;
-          showToast(ergebnis.meldung, 5000);
+          if (ergebnis.geaendert || istTiefgefroren || entry.kuehltrucheId) {
+            showToast(ergebnis.meldung, 5000);
+            meldungGezeigt = true;
+          }
         } else {
-          let zutatenListe = entry.zutaten;
-          if (!zutatenListe && entry.poolId) {
-            const pool = LS.get('ff_gerichtPool', []);
-            const gericht = pool.find(g => g.id === entry.poolId);
-            zutatenListe = gericht?.zutaten;
-          }
-          if (zutatenListe?.length) {
-            zutatenListe.forEach(z => verbraucheAusVorrat(z.title, z.menge, z.einheit));
-            vorratGeaendert = true;
-          }
+          zutatenListe.forEach(z => verbraucheAusVorrat(z.title, z.menge, z.einheit));
+          vorratGeaendert = true;
         }
         if (vorratGeaendert) {
           aktualisiereEinkaufslisteGegenVorrat();
@@ -3566,7 +3600,7 @@ function renderEssenView() {
         essenWoche[day] = tagPlan;
         save('essenWoche', essenWoche);
 
-        if (!(istTiefgefroren || entry.kuehltrucheId)) showToast('Als gegessen markiert ✓');
+        if (!meldungGezeigt) showToast('Als gegessen markiert ✓');
         renderEssenView();
       } catch (err) {
         console.error('Fehler beim Als-gegessen-Markieren:', err);
@@ -4260,6 +4294,8 @@ function openVorratModal(id) {
   document.getElementById('vmIstRest').checked   = !!v?.istRest;
   document.getElementById('vmEingefroren').value = v?.angelegtAm || today();
   document.getElementById('vmLoeschen').style.display = v ? '' : 'none';
+  document.getElementById('vmUmlagernBtn').style.display = v && v.menge > 0 ? '' : 'none';
+  document.getElementById('vmUmlagernBereich').style.display = 'none';
 
   // Vorschläge: Lagerorte (Standard + bereits genutzte) und alle bekannten Lebensmittel
   const genutzt = LS.get('ff_vorrat', []).map(x => x.lagerort).filter(Boolean);
@@ -4313,7 +4349,118 @@ function aktualisiereEingefrorenFeld() {
   document.getElementById('vmEingefrorenWrap').style.display = istGefrierschrank(ort) ? '' : 'none';
 }
 
+// ── UMLAGERN ──────────────────────────────────────────────────
+// Teilt eine Position: die Quelle wird um die Menge reduziert, am Ziel wird
+// eine passende Position (gleicher Artikel + gleiches MHD) aufgestockt oder
+// neu angelegt. Kommt etwas in einen Gefrierort, gilt heute als Einfrierdatum.
+function lagereUm(id, zielOrt, menge, fach) {
+  const vorrat = LS.get('ff_vorrat', []);
+  const src = vorrat.find(v => v.id === id);
+  if (!src || !(menge > 0)) return null;
+  const m = Math.min(menge, src.menge ?? menge);
+  const packungen = src.einzelmenge > 0 ? Math.round(m / src.einzelmenge) : null;
+  const wirdEingefroren = istGefrierschrank(zielOrt) && !istGefrierschrank(src.lagerort);
+
+  let liste = vorrat.map(v => {
+    if (v.id !== src.id) return v;
+    const rest = runde3((v.menge ?? 0) - m);
+    return { ...v, menge: rest, anzahl: (v.anzahl && packungen !== null) ? Math.max(0, v.anzahl - packungen) : v.anzahl };
+  });
+
+  // Passende Position am Ziel? (gleicher Artikel, gleiches MHD, umrechenbare Einheit)
+  const ziel = liste.find(v => v.id !== src.id && normKey(v.title) === normKey(src.title)
+    && normKey(v.lagerort) === normKey(zielOrt) && (v.mhd || null) === (src.mhd || null)
+    && rechneUm(m, src.einheit, v.einheit) !== null);
+  if (ziel) {
+    liste = liste.map(v => v.id !== ziel.id ? v : {
+      ...v,
+      menge: runde3((v.menge ?? 0) + rechneUm(m, src.einheit, v.einheit)),
+      anzahl: (v.anzahl !== null && v.anzahl !== undefined && packungen !== null) ? v.anzahl + packungen : v.anzahl,
+      notiz: fach || v.notiz,
+    });
+  } else {
+    liste.push({
+      ...src,
+      id: 'vr_' + uid(),
+      lagerort: zielOrt,
+      menge: m,
+      anzahl: packungen,
+      notiz: fach || '',
+      angelegtAm: wirdEingefroren ? today() : src.angelegtAm,
+      erstelltAm: src.erstelltAm || new Date().toISOString(), // Alter bleibt erhalten
+    });
+  }
+
+  // Quelle leer -> entfernen
+  liste = liste.filter(v => !(v.id === src.id && v.menge <= 0));
+  LS.set('ff_vorrat', liste);
+  return { m, src, zusammengelegt: !!ziel };
+}
+
+function oeffneUmlagernBereich() {
+  const v = LS.get('ff_vorrat', []).find(x => x.id === _vorratEditId);
+  if (!v) return;
+  document.getElementById('vmUmlagernBtn').style.display = 'none';
+  document.getElementById('vmUmlagernBereich').style.display = '';
+  document.getElementById('vmUmlagernQuelle').textContent =
+    `${v.title}: ${formatMenge(v.menge, v.einheit, false)} in ${v.lagerort || '–'}`;
+  document.getElementById('vmUmlagernEinheit').textContent = formatMenge(1, v.einheit, false).replace(/^1\s*/, '') || 'Menge';
+  document.getElementById('vmUmlagernMenge').value = v.menge;
+  document.getElementById('vmZielOrt').value = '';
+  document.getElementById('vmZielFach').value = '';
+
+  // Schnellwahl: Alles / 1 Packung
+  const schnell = [`Alles (${formatMenge(v.menge, v.einheit, false)})`];
+  if (v.einzelmenge > 0 && v.menge > v.einzelmenge) schnell.push(`1 Packung (${formatMenge(v.einzelmenge, v.einheit, false)})`);
+  const box = document.getElementById('vmUmlagernSchnell');
+  box.innerHTML = schnell.map((t, i) => `<button type="button" class="vorschlag-chip" data-i="${i}">${t}</button>`).join('');
+  box.querySelectorAll('.vorschlag-chip').forEach(b => b.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    document.getElementById('vmUmlagernMenge').value = b.dataset.i === '0' ? v.menge : v.einzelmenge;
+  }));
+  renderUmlagernChips();
+  document.getElementById('vmZielOrt').focus();
+}
+
+function renderUmlagernChips() {
+  const v = LS.get('ff_vorrat', []).find(x => x.id === _vorratEditId);
+  if (!v) return;
+  const genutzt = LS.get('ff_vorrat', []).map(x => x.lagerort).filter(Boolean);
+  const orte = [...new Set([...VORRAT_LAGERORTE, ...genutzt])].filter(o => normKey(o) !== normKey(v.lagerort));
+  zeigeChips('vmZielOrtChips', 'vmZielOrt', orte, renderUmlagernChips, 8);
+  const ort = normKey(document.getElementById('vmZielOrt').value);
+  const faecher = ort ? LS.get('ff_vorrat', []).filter(x => normKey(x.lagerort) === ort && x.notiz).map(x => x.notiz) : [];
+  zeigeChips('vmZielFachChips', 'vmZielFach', faecher, renderUmlagernChips, 8);
+}
+
 function setupVorratModal() {
+  document.getElementById('vmUmlagernBtn').addEventListener('click', oeffneUmlagernBereich);
+  document.getElementById('vmZielOrt').addEventListener('input', renderUmlagernChips);
+  document.getElementById('vmZielFach').addEventListener('input', renderUmlagernChips);
+  document.getElementById('vmUmlagernAbbrechen').addEventListener('click', () => {
+    document.getElementById('vmUmlagernBereich').style.display = 'none';
+    document.getElementById('vmUmlagernBtn').style.display = '';
+  });
+  document.getElementById('vmUmlagernOk').addEventListener('click', () => {
+    const zielOrt = document.getElementById('vmZielOrt').value.trim();
+    const menge = parseFloat(document.getElementById('vmUmlagernMenge').value);
+    const fach = document.getElementById('vmZielFach').value.trim();
+    const v = LS.get('ff_vorrat', []).find(x => x.id === _vorratEditId);
+    if (!v) return;
+    if (!zielOrt) { showToast('Bitte Ziel-Lagerort angeben.'); return; }
+    if (normKey(zielOrt) === normKey(v.lagerort)) { showToast('Ziel ist gleich dem aktuellen Lagerort.'); return; }
+    if (!(menge > 0)) { showToast('Bitte eine Menge größer 0 angeben.'); return; }
+    if (menge > v.menge) { showToast(`Höchstens ${formatMenge(v.menge, v.einheit, false)} möglich.`); return; }
+
+    const erg = lagereUm(v.id, zielOrt, menge, fach);
+    if (!erg) return;
+    document.getElementById('vorratModal').classList.remove('open');
+    aktualisiereEinkaufslisteGegenVorrat();
+    schreibeVorratZuSheets();
+    renderVorrat();
+    showToast(`${formatMenge(erg.m, v.einheit, false)} ${v.title} nach ${zielOrt} umgelagert${erg.zusammengelegt ? ' (zusammengelegt)' : ''} ✓`, 4000);
+  });
+
   const close = () => document.getElementById('vorratModal').classList.remove('open');
   document.getElementById('vmAbbrechen').addEventListener('click', close);
   document.getElementById('vmLagerort').addEventListener('input', () => { aktualisiereEingefrorenFeld(); renderVorratChips(); });
@@ -5064,7 +5211,15 @@ function setupLagerortPaare() {
     const entnahme = document.getElementById('paarEntnahme').value.trim();
     if (!reserve || !entnahme) { showToast('Bitte Reserve- und Entnahme-Ort angeben.'); return; }
     if (normKey(reserve) === normKey(entnahme)) { showToast('Reserve und Entnahme müssen verschieden sein.'); return; }
-    const liste = getLagerortPaare().filter(p => normKey(p.reserve) !== normKey(reserve));
+    const vorhanden = getLagerortPaare();
+    // Genau umgekehrtes Paar würde Artikel hin- und herbuchen
+    if (vorhanden.some(p => normKey(p.reserve) === normKey(entnahme) && normKey(p.entnahme) === normKey(reserve))) {
+      showToast(`Es gibt schon ${entnahme} → ${reserve}. Das umgekehrte Paar ist nicht möglich.`, 5000);
+      return;
+    }
+    // Nur ein EXAKT gleiches Paar ersetzen (vorher wurde jedes Paar mit
+    // demselben Reserve-Ort gelöscht -> es blieben nie mehr als zwei übrig)
+    const liste = vorhanden.filter(p => !(normKey(p.reserve) === normKey(reserve) && normKey(p.entnahme) === normKey(entnahme)));
     liste.push({ reserve, entnahme });
     LS.set('ff_lagerort_paare', liste);
     document.getElementById('paarReserve').value = '';
@@ -7269,49 +7424,135 @@ async function ladeGegessenVonSheets() {
   }
 }
 
-// ── TIEFGEFRORENES GERICHT ENTNEHMEN ──────────────────────────
-// Nimmt 1 Portion des Gerichts aus einem Gefrierort: mit Packungsgröße eine
-// Packung, sonst Menge -1. Reihenfolge wie beim Abziehen (MHD, Gefrierschrank
-// vor Keller, älteste zuerst). Ist das Gericht danach aufgebraucht, wird
-// ggf. aus der Reserve nachgebucht; leere Zeilen werden entfernt (ein
-// Gericht kauft man nicht nach). Name in Trello und Vorrat muss übereinstimmen.
-function entnehmeTiefkuehlgericht(entry) {
+// ── AUFTAUEN ──────────────────────────────────────────────────
+// Steht ein eingefrorenes Gericht im Plan (Trello-Label "Tiefgefroren" oder
+// als Gefriergut aus dem Gefrierschrank eingeplant), erscheint am Vortag die
+// Aufgabe "Auftauen". Nicht erledigt -> bleibt am Tag selbst stehen.
+// Abhaken wie bei den Regel-Folgeaufgaben (ff_regel_erledigt).
+const AUFTAU_VORLAUF_TAGE = 1;
+
+function istTiefkuehlEintrag(entry) {
+  const tags = (entry.tags || []).map(t => String(t).toLowerCase());
+  if (tags.includes('tiefgefroren') || tags.includes('gefriergut')) return true;
+  if (entry.kuehltrucheId) {
+    const v = LS.get('ff_vorrat', []).find(x => x.id === entry.kuehltrucheId);
+    return !!(v && istGefrierschrank(v.lagerort));
+  }
+  return false;
+}
+
+// Nächstes Datum eines Wochentags ab heute (heute selbst eingeschlossen)
+function naechstesDatumVon(tagName) {
+  const heute = new Date(today() + 'T12:00:00');
+  const ziel = (GEGESSEN_TAGE.indexOf(tagName) + 1) % 7; // JS: 0 = Sonntag
+  const diff = (ziel - heute.getDay() + 7) % 7;
+  heute.setDate(heute.getDate() + diff);
+  return toLocalDateStr(heute);
+}
+
+function getAuftauAufgaben() {
+  const heute = today();
+  const morgen = datumPlusTage(heute, 1);
+  const sonntag = datumVonWochentag('Sonntag'); // Ende der angezeigten Woche
+  const erledigt = new Set(LS.get('ff_regel_erledigt', []));
+  const SLOT_TEXT = { Frühstück: 'Frühstück', Mittag: 'Mittag', Abend: 'Abend', sonstige: '' };
+  const aufgaben = [];
+
+  GEGESSEN_TAGE.forEach(tag => {
+    const essensDatum = naechstesDatumVon(tag);
+    const auftauDatum = datumPlusTage(essensDatum, -AUFTAU_VORLAUF_TAGE);
+    if (auftauDatum > heute) return; // noch zu früh
+
+    const plan = state.essenWoche?.[tag] || {};
+    ['Frühstück', 'Mittag', 'Abend', 'sonstige'].forEach(slot => {
+      (Array.isArray(plan[slot]) ? plan[slot] : []).forEach(entry => {
+        if (!istTiefkuehlEintrag(entry)) return;
+        // schon gegessen? (Haken gelten für die angezeigte Woche)
+        if (essensDatum <= sonntag && istGegessen(tag, slot, entry)) return;
+
+        const id = `auftauen|${essensDatum}|${entry.id || normKey(entry.title)}`;
+        const istErledigt = erledigt.has(id);
+        if (istErledigt && auftauDatum !== heute) return; // erledigte nur am Auftautag zeigen
+
+        const wann = essensDatum === heute ? 'heute' : essensDatum === morgen ? 'morgen' : tag;
+        aufgaben.push({
+          id,
+          title: `🧊 Auftauen: ${entry.title}`,
+          subtitle: `für ${wann}${SLOT_TEXT[slot] ? ' ' + SLOT_TEXT[slot] : ''}`,
+          duration: 0,
+          done: istErledigt,
+          virtuell: true,
+          regelBasiert: true, // Abhaken über ff_regel_erledigt
+        });
+      });
+    });
+  });
+  return aufgaben;
+}
+
+// ── GERICHT AUS DEM VORRAT ENTNEHMEN ──────────────────────────
+// Für tiefgefrorene Gerichte und Gerichte ohne Rezept: 1 Portion bzw.
+// Packung des passenden Vorrat-Artikels abziehen. Durchsucht wird JEDER
+// Lagerort, in der üblichen Reihenfolge (MHD, Entnahme vor Reserve, älteste).
+
+// Passender Vorrat-Artikel: exakter Name, sonst der längste Artikelname,
+// der als ganzes Wort im Gerichtsnamen vorkommt ("Ofenkäse" in
+// "Abendessen Ofenkäse mit Gemüsesticks").
+function findeVorratArtikelZuGericht(gerichtTitel) {
+  const woerterVon = s => ' ' + suchKey(s).replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+  const g = woerterVon(gerichtTitel);
+  const namen = [...new Set(LS.get('ff_vorrat', [])
+    .filter(v => !istBrotEintrag(v) && (v.menge === null || v.menge === undefined || v.menge > 0))
+    .map(v => v.title))];
+  const exakt = namen.find(n => woerterVon(n) === g);
+  if (exakt) return exakt;
+  return namen
+    .filter(n => { const k = woerterVon(n); return k.trim().length >= 3 && g.includes(k); })
+    .sort((a, b) => b.length - a.length)[0] || null;
+}
+
+function entnehmeGerichtAusVorrat(entry) {
   const vorrat = LS.get('ff_vorrat', []);
   const verfuegbar = v => v && (v.menge === null || v.menge === undefined || v.menge > 0);
 
-  // Per Vorschlag eingeplant: genau diese Position, sonst nach Name in Gefrierorten
+  // Per Vorschlag eingeplant: genau diese Position; sonst nach Name, jeder Lagerort
   let pos = entry.kuehltrucheId ? vorrat.find(v => v.id === entry.kuehltrucheId) : null;
   if (!verfuegbar(pos)) {
-    pos = vorratPositionenFuer(entry.title).find(v => istGefrierschrank(v.lagerort) && verfuegbar(v));
+    const name = findeVorratArtikelZuGericht(entry.title);
+    pos = name ? vorratPositionenFuer(name).find(verfuegbar) : null;
   }
   if (!pos) {
-    return { geaendert: false, meldung: `Gegessen ✓ – „${entry.title}" nicht im Gefrierschrank gefunden, Vorrat unverändert.` };
+    return { geaendert: false, meldung: `Gegessen ✓ – kein passender Vorrat-Artikel zu „${entry.title}" gefunden, Vorrat unverändert.` };
   }
 
-  const portion = pos.einzelmenge > 0 ? pos.einzelmenge : 1;
+  // 1 Portion/Packung: mit Packungsgröße eine Packung; Gewicht/Volumen ohne
+  // Packungsgröße = das ganze Stück (z.B. 1 Ofenkäse à 200 g); sonst Menge -1
+  const gewicht = ['g', 'kg', 'ml', 'l'].includes(pos.einheit);
+  const portion = pos.einzelmenge > 0 ? pos.einzelmenge : (gewicht ? (pos.menge ?? 0) : 1);
   const neueMenge = (pos.menge === null || pos.menge === undefined) ? 0 : Math.max(0, runde3(pos.menge - portion));
   const neueAnzahl = pos.anzahl ? Math.max(0, pos.anzahl - 1) : pos.anzahl;
   LS.set('ff_vorrat', vorrat.map(v => v.id === pos.id ? { ...v, menge: neueMenge, anzahl: neueAnzahl } : v));
 
-  // Am Entnahme-Ort leer -> aus der Reserve nachbuchen (Gefrierschrank Keller)
+  // Am Entnahme-Ort leer -> aus der Reserve nachbuchen
   const aufgabenVorher = state.aufgaben.length;
   pruefeNachschub(pos.title);
   const nachgebucht = state.aufgaben.length > aufgabenVorher;
 
-  // Übrige leere Zeilen dieses Gerichts in Gefrierorten entfernen
+  // Leere Zeilen eingefrorener Gerichte entfernen (Gerichte kauft man nicht
+  // nach); bei normalen Artikeln bleibt die 0-Zeile als "nachkaufen" stehen
   const key = normKey(pos.title);
   LS.set('ff_vorrat', LS.get('ff_vorrat', []).filter(v =>
     !(normKey(v.title) === key && istGefrierschrank(v.lagerort) && v.menge !== null && v.menge !== undefined && v.menge <= 0)));
 
-  const einheitWort = pos.einzelmenge > 0 ? 'Packung' : 'Portion';
+  const einheitWort = pos.einzelmenge > 0 ? 'Packung' : (istGefrierschrank(pos.lagerort) ? 'Portion' : 'Stück');
+  const mehrzahl = { Packung: 'Packungen', Portion: 'Portionen', Stück: 'Stück' };
   const rest = LS.get('ff_vorrat', [])
-    .filter(v => normKey(v.title) === key && istGefrierschrank(v.lagerort))
-    .reduce((s, v) => s + (v.einzelmenge > 0 ? Math.round(v.menge / v.einzelmenge) : (v.menge || 0)), 0);
-  const restText = rest > 0 ? ` – noch ${rest} ${rest === 1 ? einheitWort : einheitWort + (einheitWort === 'Packung' ? 'en' : 'en')}` : '';
+    .filter(v => normKey(v.title) === key && v.menge > 0)
+    .reduce((s, v) => s + (v.einzelmenge > 0 ? Math.round(v.menge / v.einzelmenge) : (['g','kg','ml','l'].includes(v.einheit) ? 1 : v.menge)), 0);
   return {
     geaendert: true,
     meldung: rest > 0
-      ? `Gegessen ✓ – 1 ${einheitWort} „${pos.title}" aus ${pos.lagerort} entnommen${restText}${nachgebucht ? ' (Nachschub aus dem Keller umgebucht)' : ''}.`
+      ? `Gegessen ✓ – 1 ${einheitWort} „${pos.title}" aus ${pos.lagerort} entnommen – noch ${rest} ${rest === 1 ? einheitWort : mehrzahl[einheitWort]}${nachgebucht ? ' (Nachschub umgebucht)' : ''}.`
       : `Gegessen ✓ – „${pos.title}" ist jetzt aufgebraucht.`,
   };
 }
